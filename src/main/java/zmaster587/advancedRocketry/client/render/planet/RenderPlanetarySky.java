@@ -33,7 +33,7 @@ import net.minecraftforge.common.util.ForgeDirection;
 public class RenderPlanetarySky extends IRenderHandler {
 
 
-	private int starGLCallList;
+	protected int starGLCallList;
 	private int glSkyList;
 	private int glSkyList2;
 	float celestialAngle;
@@ -474,7 +474,7 @@ public class RenderPlanetarySky extends IRenderHandler {
 
 			if(subStars != null && !subStars.isEmpty()) {
 				GL11.glPushMatrix();
-				float phaseInc = 360/subStars.size();
+				float phaseInc = 360f/subStars.size();
 				
 				for(StellarBody subStar : subStars) {
 					GL11.glRotatef(phaseInc, 0, 1, 0);

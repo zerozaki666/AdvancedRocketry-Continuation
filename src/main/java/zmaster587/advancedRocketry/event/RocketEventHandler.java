@@ -82,7 +82,9 @@ public class RocketEventHandler extends Gui {
 			//So fix that...
 			ForgeHooksClient.getSkyBlendColour(event.world, 0, 0, 0);
 
-			if(Configuration.planetSkyOverride && !(event.world.provider instanceof IPlanetaryProvider)) {
+			if(Configuration.skyOverride
+					&& event.world.provider.dimensionId == 0
+					&& !(event.world.provider instanceof IPlanetaryProvider)) {
 				prevRenderHanlder = event.world.provider.getSkyRenderer();
 				event.world.provider.setSkyRenderer(new RenderPlanetarySky());
 			}
@@ -97,7 +99,14 @@ public class RocketEventHandler extends Gui {
 	
 	@SubscribeEvent
 	public void onRocketLaunch(RocketEvent.RocketLaunchEvent event) {
-		if(Configuration.planetSkyOverride && event.world.isRemote && event.entity.ridingEntity != null && event.entity.ridingEntity.equals(Minecraft.getMinecraft().thePlayer)) {
+		boolean mayOverrideSky =
+				!(event.world.provider instanceof IPlanetaryProvider)
+						&& Configuration.skyOverride
+						&& event.world.provider.dimensionId == 0;
+		if(mayOverrideSky && event.world.isRemote
+				&& event.entity.ridingEntity != null
+				&& event.entity.ridingEntity.equals(
+						Minecraft.getMinecraft().thePlayer)) {
 			prepareOrbitalMap(event);
 			prevRenderHanlder = event.world.provider.getSkyRenderer();
 			event.world.provider.setSkyRenderer(new RenderPlanetarySky());
@@ -112,7 +121,8 @@ public class RocketEventHandler extends Gui {
 
 	@SideOnly(Side.CLIENT)
 	public static void destroyOrbitalTextures(World world) {
-		if(!Configuration.skyOverride && !(world.provider instanceof IPlanetaryProvider)) {
+		if(prevRenderHanlder != null
+				&& !(world.provider instanceof IPlanetaryProvider)) {
 			world.provider.setSkyRenderer(prevRenderHanlder);
 			prevRenderHanlder = null;
 		}

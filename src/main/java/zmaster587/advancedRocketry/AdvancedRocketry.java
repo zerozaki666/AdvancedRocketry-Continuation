@@ -98,6 +98,8 @@ import zmaster587.advancedRocketry.block.plant.BlockAlienPlanks;
 import zmaster587.advancedRocketry.block.plant.BlockAlienSapling;
 import zmaster587.advancedRocketry.block.plant.BlockAlienWood;
 import zmaster587.advancedRocketry.block.BlockTorchUnlit;
+import zmaster587.advancedRocketry.block.rocket.BlockDividerAdvRocketMotor;
+import zmaster587.advancedRocketry.block.rocket.BlockDividerRocketMotor;
 import zmaster587.advancedRocketry.command.WorldCommand;
 import zmaster587.advancedRocketry.common.CommonProxy;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
@@ -153,6 +155,7 @@ import zmaster587.advancedRocketry.satellite.SatelliteOptical;
 import zmaster587.advancedRocketry.satellite.SatelliteOreMapping;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.thread.RocketStructureThread;
 import zmaster587.advancedRocketry.tile.Satellite.TileEntitySatelliteControlCenter;
 import zmaster587.advancedRocketry.tile.Satellite.TileSatelliteBuilder;
 import zmaster587.advancedRocketry.tile.*;
@@ -212,6 +215,7 @@ import zmaster587.advancedRocketry.world.biome.BiomeGenStormland;
 import zmaster587.advancedRocketry.world.decoration.MapGenLander;
 import zmaster587.advancedRocketry.world.ore.OreGenerator;
 import zmaster587.advancedRocketry.world.provider.WorldProviderPlanet;
+import zmaster587.advancedRocketry.world.provider.WorldProviderFreeSpace;
 import zmaster587.advancedRocketry.world.provider.WorldProviderSpace;
 import zmaster587.advancedRocketry.world.type.WorldTypePlanetGen;
 import zmaster587.advancedRocketry.world.type.WorldTypeSpace;
@@ -250,14 +254,14 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-@Mod(modid="advancedRocketry", name="Advanced Rocketry", version="@MAJOR@.@MINOR@.@REVIS@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,)")
+@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,)")
 public class AdvancedRocketry {
 
 
 	@SidedProxy(clientSide="zmaster587.advancedRocketry.client.ClientProxy", serverSide="zmaster587.advancedRocketry.common.CommonProxy")
 	public static CommonProxy proxy;
 
-	public final static String version = "@MAJOR@.@MINOR@.@REVIS@@BUILD@";
+	public final static String version = "@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@";
 
 	@Instance(value = Constants.modId)
 	public static AdvancedRocketry instance;
@@ -310,6 +314,14 @@ public class AdvancedRocketry {
 		AtmosphereVacuum.damageValue = (int) config.get(Configuration.CATEGORY_GENERAL, "vacuumDamage", 1, "Amount of damage taken every second in a vacuum").getInt();
 		zmaster587.advancedRocketry.api.Configuration.buildSpeedMultiplier = (float) config.get(Configuration.CATEGORY_GENERAL, "buildSpeedMultiplier", 1f, "Multiplier for the build speed of the Rocket Builder (0.5 is twice as fast 2 is half as fast").getDouble();
 		zmaster587.advancedRocketry.api.Configuration.spaceDimId = config.get(Configuration.CATEGORY_GENERAL,"spaceStationId" , -2,"Dimension ID to use for space stations").getInt();
+		int legacyFreeSpaceId = config.hasKey(Configuration.CATEGORY_GENERAL,
+				"spaceSpaceId")
+						? config.getCategory(Configuration.CATEGORY_GENERAL)
+								.get("spaceSpaceId").getInt(-3)
+						: -3;
+		zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId = config.get(Configuration.CATEGORY_GENERAL, "freeSpaceId", legacyFreeSpaceId, "Dimension ID to use for controlled interplanetary flight").getInt();
+		if(zmaster587.advancedRocketry.api.Configuration.spaceDimId == zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId)
+			throw new IllegalArgumentException("Advanced Rocketry's spaceStationId and freeSpaceId must be different");
 		zmaster587.advancedRocketry.api.Configuration.enableNausea = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericNausea", true, "If true, allows players to experience nausea with low oxygen").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.enableOxygen = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericEffects", true, "If true, allows players being hurt due to lack of oxygen and allows effects from non-standard atmosphere types").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.allowMakingItemsForOtherMods = config.get(Configuration.CATEGORY_GENERAL, "makeMaterialsForOtherMods", true, "If true the machines from AdvancedRocketry will produce things like plates/rods for other mods even if Advanced Rocketry itself does not use the material (This can increase load time)").getBoolean();
@@ -357,6 +369,8 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.oxygenVentConsumptionMult = config.get(Configuration.CATEGORY_GENERAL, "oxygenVentConsumptionMultiplier", 1f, "Multiplier on how much O2 an oxygen vent consumes per tick").getDouble();
 
 		zmaster587.advancedRocketry.api.Configuration.stationSkyOverride = config.get(CLIENT, "StationSkyOverride", true, "If true, AR will use a custom skybox on space stations").getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.spaceSkyOverride = config.get(CLIENT, "SpaceSkyOverride", true, "If true, AR will render the simulated universe in the free-space dimension").getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.maxSpaceRocketSpeed = config.get(Configuration.CATEGORY_GENERAL, "maxSpaceRocketSpeed", 1.0D, "Maximum vector speed of a manually flown rocket in free space", 0.05D, 10.0D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.planetSkyOverride = config.get(CLIENT, "PlanetSkyOverride", true, "If true, AR will use a custom skybox on planets").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.skyOverride = config.get(CLIENT, "overworldSkyOverride", true).getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.advancedVFX = config.get(PERFORMANCE, "advancedVFX", true, "Advanced visual effects").getBoolean();
@@ -474,6 +488,8 @@ public class AdvancedRocketry {
 		AdvancedRocketryBlocks.blockGenericSeat = new BlockSeat(Material.cloth).setBlockName("seat").setCreativeTab(tabAdvRocketry).setBlockTextureName("minecraft:wool_colored_silver").setHardness(0.5f);
 		AdvancedRocketryBlocks.blockEngine = new BlockRocketMotor(Material.rock).setBlockName("rocket").setCreativeTab(tabAdvRocketry).setHardness(2f);
 		AdvancedRocketryBlocks.blockAdvEngine = new BlockAdvRocketMotor(Material.rock).setBlockName("advRocket").setCreativeTab(tabAdvRocketry).setHardness(2f);
+		AdvancedRocketryBlocks.blockEngineDivider = new BlockDividerRocketMotor(Material.rock).setBlockName("rocketDivider").setCreativeTab(tabAdvRocketry).setHardness(2f);
+		AdvancedRocketryBlocks.blockAdvEngineDivider = new BlockDividerAdvRocketMotor(Material.rock).setBlockName("advRocketDivider").setCreativeTab(tabAdvRocketry).setHardness(2f);
 		AdvancedRocketryBlocks.blockFuelTank = new BlockFuelTank(Material.rock).setBlockName("fuelTank").setCreativeTab(tabAdvRocketry).setHardness(2f);
 		AdvancedRocketryBlocks.blockSawBlade = new BlockRotatableModel(Material.rock, TileModelRender.models.SAWBLADE.ordinal()).setCreativeTab(tabAdvRocketry).setBlockName("sawBlade").setHardness(2f);
 		AdvancedRocketryBlocks.blockConcrete = new BlockGeneric(Material.rock).setBlockName("concrete").setBlockTextureName("advancedRocketry:rocketPad_noEdge").setCreativeTab(tabAdvRocketry).setHardness(3f).setResistance(16f);
@@ -773,6 +789,8 @@ public class AdvancedRocketry {
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockStructureTower, "structureTower");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockGenericSeat, "seat");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockEngine, "rocketmotor");
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockEngineDivider, "rocketmotorDivider");
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockAdvEngineDivider, "rocketmotorAdvDivider");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockFuelTank, "fuelTank");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockFuelingStation, "fuelingStation");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockMonitoringStation, "blockMonitoringStation");
@@ -1132,6 +1150,20 @@ public class AdvancedRocketry {
 		GameRegistry.addRecipe(new ShapedOreRecipe(AdvancedRocketryBlocks.blockStructureTower, "ooo", " o ", "ooo", 'o', "stickSteel"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(AdvancedRocketryBlocks.blockEngine, "sss", " t ","t t", 's', "ingotSteel", 't', "plateTitanium"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(AdvancedRocketryBlocks.blockAdvEngine, "sss", " t ","t t", 's', "ingotTitaniumAluminide", 't', "plateTitaniumIridium"));
+		GameRegistry.addShapelessRecipe(
+				new ItemStack(AdvancedRocketryBlocks.blockEngineDivider),
+				new ItemStack(AdvancedRocketryBlocks.blockEngine),
+				Items.redstone);
+		GameRegistry.addShapelessRecipe(
+				new ItemStack(AdvancedRocketryBlocks.blockEngine),
+				new ItemStack(AdvancedRocketryBlocks.blockEngineDivider));
+		GameRegistry.addShapelessRecipe(
+				new ItemStack(AdvancedRocketryBlocks.blockAdvEngineDivider),
+				new ItemStack(AdvancedRocketryBlocks.blockAdvEngine),
+				Items.redstone);
+		GameRegistry.addShapelessRecipe(
+				new ItemStack(AdvancedRocketryBlocks.blockAdvEngine),
+				new ItemStack(AdvancedRocketryBlocks.blockAdvEngineDivider));
 		GameRegistry.addRecipe(new ShapedOreRecipe(AdvancedRocketryBlocks.blockFuelTank, "s s", "p p", "s s", 'p', "plateSteel", 's', "stickSteel"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(LibVulpesItems.itemBattery,4,0), " c ","prp", "prp", 'c', "stickIron", 'r', "dustRedstone", 'p', "plateTin"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(LibVulpesItems.itemBattery,1,1), "bpb", "bpb", 'b', smallBattery, 'p', "plateCopper"));
@@ -1408,6 +1440,7 @@ public class AdvancedRocketry {
 		if(zmaster587.advancedRocketry.api.Configuration.enableLaserDrill)
 			((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileSpaceLaser(), (BlockTile)AdvancedRocketryBlocks.blockSpaceLaser);
 
+		LibVulpes.registerPendingDummyMultiblocks();
 
 		proxy.registerEventHandlers();
 		proxy.registerKeyBindings();
@@ -1461,9 +1494,28 @@ public class AdvancedRocketry {
 			RecipesMachine.getInstance().addRecipe(material.getMachine(), material.getProducts(), 100, 10, material.getInput());
 		}
 
-		//Register space dimension
-		net.minecraftforge.common.DimensionManager.registerProviderType(zmaster587.advancedRocketry.api.Configuration.spaceDimId, WorldProviderSpace.class, true);
+		// Keep station coordinates separate from the continuous universe used by
+		// manually flown rockets.  Refuse collisions instead of silently taking a
+		// dimension already owned by another installed space mod.
+		if(net.minecraftforge.common.DimensionManager.isDimensionRegistered(zmaster587.advancedRocketry.api.Configuration.spaceDimId))
+			throw new IllegalStateException("Advanced Rocketry spaceStationId "
+					+ zmaster587.advancedRocketry.api.Configuration.spaceDimId
+					+ " is already registered; choose another ID in advancedRocketry.cfg");
+		if(net.minecraftforge.common.DimensionManager.isDimensionRegistered(zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId))
+			throw new IllegalStateException("Advanced Rocketry freeSpaceId "
+					+ zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId
+					+ " is already registered; choose another ID in advancedRocketry.cfg");
+
+		if(!net.minecraftforge.common.DimensionManager.registerProviderType(zmaster587.advancedRocketry.api.Configuration.spaceDimId, WorldProviderSpace.class, true))
+			throw new IllegalStateException("Advanced Rocketry could not register provider type "
+					+ zmaster587.advancedRocketry.api.Configuration.spaceDimId
+					+ " for space stations");
 		net.minecraftforge.common.DimensionManager.registerDimension(zmaster587.advancedRocketry.api.Configuration.spaceDimId,zmaster587.advancedRocketry.api.Configuration.spaceDimId);
+		if(!net.minecraftforge.common.DimensionManager.registerProviderType(zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId, WorldProviderFreeSpace.class, true))
+			throw new IllegalStateException("Advanced Rocketry could not register provider type "
+					+ zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId
+					+ " for free space");
+		net.minecraftforge.common.DimensionManager.registerDimension(zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId, zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId);
 
 		//Register fuels
 		logger.info("Start registering liquid rocket fuels");
@@ -1604,6 +1656,7 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.initiallyKnownPlanets.add(0);
 	}
 
+	public static RocketStructureThread rocketStructureDivider;
 	@EventHandler
 	public void serverStarted(FMLServerStartedEvent event) {
 		for (int dimId : DimensionManager.getInstance().getLoadedDimensions()) {
@@ -1619,6 +1672,9 @@ public class AdvancedRocketry {
 
 	@EventHandler
 	public void serverStarting(FMLServerStartingEvent event) {
+		rocketStructureDivider =
+				new RocketStructureThread("AR Rocket Structure Computing Thread");
+		rocketStructureDivider.start();
 		event.registerServerCommand(new WorldCommand());
 		int dimOffset = DimensionManager.dimOffset;
 		//Open ore files
@@ -1915,6 +1971,7 @@ public class AdvancedRocketry {
 				
 				DimensionManager.getInstance().getStar(star.getId()).setName(star.getName());
 				DimensionManager.getInstance().getStar(star.getId()).setPosX(star.getPosX());
+				DimensionManager.getInstance().getStar(star.getId()).setPosY(star.getPosY());
 				DimensionManager.getInstance().getStar(star.getId()).setPosZ(star.getPosZ());
 				DimensionManager.getInstance().getStar(star.getId()).setSize(star.getSize());
 				DimensionManager.getInstance().getStar(star.getId()).setTemperature(star.getTemperature());
@@ -1944,6 +2001,7 @@ public class AdvancedRocketry {
 
 					loadedProps.fogColor = properties.fogColor;
 					loadedProps.gravitationalMultiplier = properties.gravitationalMultiplier;
+					loadedProps.mass = properties.getMass();
 					loadedProps.hasRings = properties.hasRings;
 					loadedProps.orbitalDist = properties.getOrbitalDist();
 					loadedProps.ringColor = properties.ringColor;
@@ -2052,6 +2110,7 @@ public class AdvancedRocketry {
 		DimensionManager.dimOffset = dimOffset;
 		
 		DimensionManager.getInstance().knownPlanets.addAll(zmaster587.advancedRocketry.api.Configuration.initiallyKnownPlanets);
+		zmaster587.advancedRocketry.dimension.sim.AdvancedRocketryUniverse.refresh();
 	}
 
 	private List<DimensionProperties> generateRandomPlanets(StellarBody star, int numRandomGeneratedPlanets, int numRandomGeneratedGasGiants) {
@@ -2129,6 +2188,11 @@ public class AdvancedRocketry {
 
 	@EventHandler
 	public void serverStopped(FMLServerStoppedEvent event) {
+		if(rocketStructureDivider != null) {
+			rocketStructureDivider.shutdown();
+			rocketStructureDivider = null;
+		}
+		zmaster587.advancedRocketry.dimension.sim.AdvancedRocketryUniverse.stop();
 		zmaster587.advancedRocketry.dimension.DimensionManager.getInstance().unregisterAllDimensions();
 		zmaster587.advancedRocketry.cable.NetworkRegistry.clearNetworks();
 		SpaceObjectManager.getSpaceManager().onServerStopped();

@@ -34,6 +34,8 @@ public class SatelliteRegistry {
 	 * @return the registered SatelliteProperties of the stack, or null if not registered
 	 */
 	public static SatelliteProperties getSatelliteProperty(ItemStack stack) {
+		if(stack == null)
+			return null;
 		
 		for(ItemStack keyStack : itemPropertiesRegistry.keySet()) {
 			if(keyStack.getItem() == stack.getItem() && ( !keyStack.getHasSubtypes() || keyStack.getItemDamage() == stack.getItemDamage()) ) {
@@ -74,6 +76,9 @@ public class SatelliteRegistry {
 	 */
 	public static SatelliteBase createFromNBT(NBTTagCompound nbt) {
 		SatelliteBase satellite = getSatallite(nbt.getString("dataType"));
+
+		if(satellite == null)
+			return null;
 
 		satellite.readFromNBT(nbt);
 

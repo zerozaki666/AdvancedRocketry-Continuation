@@ -183,7 +183,7 @@ public class ModuleOreMapper extends ModuleBase {
 		//int x = (width - 240) / 2, y = (height - 192) / 2;
 
 		//If the scan is done then 
-		if(merged) {
+		if(merged && oreMap != null) {
 			IntBuffer buffer = texture.getByteBuffer();
 			int scanWidth = Math.max(scanSize/radius,1);
 

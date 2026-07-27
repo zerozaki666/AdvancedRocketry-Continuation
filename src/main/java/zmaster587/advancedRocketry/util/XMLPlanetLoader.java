@@ -1,31 +1,20 @@
 package zmaster587.advancedRocketry.util;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.List;
-
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-
 import net.minecraft.block.Block;
+import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.init.Blocks;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
-import net.minecraft.util.ResourceLocation;
+import net.minecraft.nbt.NBTException;
 import net.minecraftforge.common.BiomeManager.BiomeEntry;
 import net.minecraftforge.fluids.Fluid;
 import net.minecraftforge.fluids.FluidRegistry;
-
+import org.w3c.dom.DOMException;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 import org.xml.sax.SAXException;
-
 import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
@@ -33,7 +22,13 @@ import zmaster587.advancedRocketry.api.dimension.solar.IGalaxy;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
-import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import java.io.File;
+import java.io.IOException;
+import java.util.*;
 
 public class XMLPlanetLoader {
 
@@ -240,12 +235,20 @@ public class XMLPlanetLoader {
 					AdvancedRocketry.logger.warn("Invalid orbitalDist specified"); //TODO: more detailed error msg
 				}
 			}
+			else if(planetPropertyNode.getNodeName().equalsIgnoreCase("mass")) {
+				try {
+					properties.mass = Math.max(
+							Float.parseFloat(planetPropertyNode.getTextContent()), 0.01F);
+				} catch (NumberFormatException e) {
+					AdvancedRocketry.logger.warn("Invalid planet mass specified");
+				}
+			}
 			else if(planetPropertyNode.getNodeName().equalsIgnoreCase("orbitaltheta")) {
 
 				try {
 					properties.baseOrbitTheta = (Integer.parseInt(planetPropertyNode.getTextContent()) % 360) * Math.PI/180f;
 				} catch (NumberFormatException e) {
-					AdvancedRocketry.logger.warn("Invalid orbitalTheta specified"); //TODO: more detailed error msg
+					AdvancedRocketry.logger.warn("Invalid orbitalPhi specified"); //TODO: more detailed error msg
 				}
 			}
 			else if(planetPropertyNode.getNodeName().equalsIgnoreCase("rotationalperiod")) {
@@ -351,8 +354,85 @@ public class XMLPlanetLoader {
 				String text = planetPropertyNode.getTextContent();
 				if(text != null && !text.isEmpty() && text.equalsIgnoreCase("true"))
 					properties.setGasGiant(true);
-			}
-			else if(planetPropertyNode.getNodeName().equalsIgnoreCase("isKnown")) {
+			}else if(planetPropertyNode.getNodeName().equalsIgnoreCase("spawnable")) {
+				int weight = 100;
+				int groupMin = 1, groupMax = 1;
+				String nbtString = "";
+				Node weightNode = planetPropertyNode.getAttributes().getNamedItem("weight");
+				Node groupMinNode = planetPropertyNode.getAttributes().getNamedItem("groupMin");
+				Node groupMaxNode = planetPropertyNode.getAttributes().getNamedItem("groupMax");
+				Node nbtNode = planetPropertyNode.getAttributes().getNamedItem("nbt");
+
+				//Get spawn properties
+				if(weightNode != null) {
+					try {
+						weight = Integer.parseInt(weightNode.getTextContent());
+						weight = Math.max(1, weight);
+					} catch(NumberFormatException ignored) {
+					}
+				}
+				if(groupMinNode != null) {
+					try {
+						groupMin = Integer.parseInt(groupMinNode.getTextContent());
+						groupMin = Math.max(1, groupMin);
+					} catch(NumberFormatException ignored) {
+					}
+				}
+				if(groupMaxNode != null) {
+					try {
+						groupMax = Integer.parseInt(groupMaxNode.getTextContent());
+						groupMax = Math.max(1, groupMax);
+					} catch(NumberFormatException ignored) {
+					}
+				}
+
+				if(nbtNode != null) {
+					nbtString = nbtNode.getTextContent();
+				}
+
+				if (groupMax < groupMin) {
+					groupMax = groupMin;
+				}
+
+				String entityIdentifier = planetPropertyNode.getTextContent() == null
+						? ""
+						: planetPropertyNode.getTextContent().trim();
+				Class clazz = (Class)EntityList.stringToClassMapping.get(entityIdentifier);
+				//If not using string name maybe it's a class name?
+				if(clazz == null) {
+					try {
+						clazz = Class.forName(entityIdentifier);
+						if(!EntityLiving.class.isAssignableFrom(clazz))
+							clazz = null;
+					} catch (Exception ignored) {}
+				}
+
+				if(clazz != null && EntityLiving.class.isAssignableFrom(clazz)) {
+					SpawnListEntryNBT entry = new SpawnListEntryNBT(
+							(Class<? extends EntityLiving>)clazz, weight, groupMin,
+							groupMax, entityIdentifier);
+					boolean validEntry = true;
+					if(!nbtString.isEmpty())
+						try {
+							entry.setNbt(nbtString);
+						} catch (DOMException e) {
+							validEntry = false;
+							AdvancedRocketry.logger.fatal("===== Configuration Error!  Please check your save's planetDefs.xml config file =====\n"
+									+ e.getLocalizedMessage()
+									+ "\nThe following is not valid JSON:\n" + nbtString);
+						} catch (NBTException e) {
+							validEntry = false;
+							AdvancedRocketry.logger.fatal("===== Configuration Error!  Please check your save's planetDefs.xml config file =====\n"
+									+ e.getLocalizedMessage()
+									+ "\nThe following is not valid NBT data:\n" + nbtString);
+						}
+
+					if(validEntry)
+						properties.getSpawnListEntries().add(entry);
+				} else
+					AdvancedRocketry.logger.warn("Cannot find " + entityIdentifier + " while registering entity for planet spawn");
+
+			} else if(planetPropertyNode.getNodeName().equalsIgnoreCase("isKnown")) {
 				String text = planetPropertyNode.getTextContent();
 				if(text != null && !text.isEmpty() && text.equalsIgnoreCase("true")) {
 					Configuration.initiallyKnownPlanets.add(properties.getId());
@@ -398,11 +478,26 @@ public class XMLPlanetLoader {
 				}
 			}
 
-			nameNode = planetNode.getAttributes().getNamedItem("y");
+			Node yNode = planetNode.getAttributes().getNamedItem("y");
+			Node zNode = planetNode.getAttributes().getNamedItem("z");
+			Node schemaNode = planetNode.getAttributes().getNamedItem("coordinateSchema");
+			boolean xyzSchema = zNode != null
+					|| (schemaNode != null && "xyz".equalsIgnoreCase(schemaNode.getNodeValue()));
 
-			if(nameNode != null && !nameNode.getNodeValue().isEmpty()) {
+			if(yNode != null && !yNode.getNodeValue().isEmpty()) {
 				try {
-					star.setPosZ(Integer.parseInt(nameNode.getNodeValue()));
+					if(xyzSchema)
+						star.setPosY(Integer.parseInt(yNode.getNodeValue()));
+					else
+						star.setPosZ(Integer.parseInt(yNode.getNodeValue()));
+				} catch (NumberFormatException e) {
+					AdvancedRocketry.logger.warn("Error Reading star " + star.getName());
+				}
+			}
+
+			if(zNode != null && !zNode.getNodeValue().isEmpty()) {
+				try {
+					star.setPosZ(Integer.parseInt(zNode.getNodeValue()));
 				} catch (NumberFormatException e) {
 					AdvancedRocketry.logger.warn("Error Reading star " + star.getName());
 				}
@@ -513,8 +608,8 @@ public class XMLPlanetLoader {
 		Collection<StellarBody> stars = galaxy.getStars();
 
 		for(StellarBody star : stars) {
-			outputString = outputString + "\t<star name=\"" + star.getName() + "\" temp=\"" + star.getTemperature() + "\" x=\"" + star.getPosX() 
-					+ "\" y=\"" + star.getPosZ() + "\" size=\"" + star.getSize() + "\" numPlanets=\"0\" numGasGiants=\"0\">\n";
+			outputString = outputString + "\t<star name=\"" + star.getName() + "\" temp=\"" + star.getTemperature() + "\" coordinateSchema=\"xyz\" x=\"" + star.getPosX()
+					+ "\" y=\"" + star.getPosY() + "\" z=\"" + star.getPosZ() + "\" size=\"" + star.getSize() + "\" numPlanets=\"0\" numGasGiants=\"0\">\n";
 
 			for(StellarBody star2 : star.getSubStars()) {
 				outputString = outputString + "\t\t<star temp=\"" + star2.getTemperature() + 
@@ -579,6 +674,7 @@ public class XMLPlanetLoader {
 		outputString = outputString + tabLen + "\t<orbitalTheta>" + (int)(properties.baseOrbitTheta * 180d/Math.PI) + "</orbitalTheta>\n";
 		outputString = outputString + tabLen + "\t<solarInsolationMult>" + properties.peakInsolationMultiplier + "</solarInsolationMult>\n";
 		outputString = outputString + tabLen + "\t<avgTemperature>" + (int)(properties.averageTemperature) + "</avgTemperature>\n";
+		outputString = outputString + tabLen + "\t<mass>" + properties.getMass() + "</mass>\n";
 		outputString = outputString + tabLen + "\t<orbitalPhi>" + (int)(properties.orbitalPhi) + "</orbitalPhi>\n";
 		outputString = outputString + tabLen + "\t<rotationalPeriod>" + (int)properties.rotationalPeriod + "</rotationalPeriod>\n";
 		outputString = outputString + tabLen + "\t<atmosphereDensity>" + (int)properties.getAtmosphereDensity() + "</atmosphereDensity>\n";
@@ -609,7 +705,25 @@ public class XMLPlanetLoader {
 		}
 
 		for(ItemStack stack : properties.getRequiredArtifacts()) {
-			outputString = outputString + tabLen + "\t<artifact>" + Item.itemRegistry.getNameForObject(stack.getItem()) + " " + stack.getItemDamage() + " " + stack.stackSize + "</artifact>\n";
+			outputString = outputString + tabLen + "\t<artifact>" + Item.itemRegistry.getNameForObject(stack.getItem()) + ";" + stack.getItemDamage() + ";" + stack.stackSize + "</artifact>\n";
+		}
+
+		for(SpawnListEntryNBT spawn : properties.getSpawnListEntries()) {
+			String entityName = spawn.getEntityIdentifier();
+			if(entityName == null || entityName.isEmpty()) {
+				Object registeredName =
+						EntityList.classToStringMapping.get(spawn.entityClass);
+				entityName = registeredName instanceof String
+						? (String)registeredName
+						: spawn.entityClass.getName();
+			}
+			outputString = outputString + tabLen + "\t<spawnable weight=\""
+					+ spawn.itemWeight + "\" groupMin=\"" + spawn.minGroupCount
+					+ "\" groupMax=\"" + spawn.maxGroupCount + "\""
+					+ (spawn.getNBTString().isEmpty()
+							? ""
+							: " nbt=\"" + escapeXml(spawn.getNBTString()) + "\"")
+					+ ">" + escapeXml(entityName) + "</spawnable>\n";
 		}
 		
 		for(Integer properties2 : properties.getChildPlanets()) {
@@ -628,6 +742,14 @@ public class XMLPlanetLoader {
 		return outputString;
 	}
 
+	private static String escapeXml(String value) {
+		return value.replace("&", "&amp;")
+				.replace("\"", "&quot;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("'", "&apos;");
+	}
+
 	public static class DimensionPropertyCoupling {
 
 		public List<StellarBody> stars = new LinkedList<StellarBody>();
@@ -638,10 +760,13 @@ public class XMLPlanetLoader {
 
 	
 	public static ItemStack getStack(String text) {
-		String splitStr[] = text.split(" ");
+		String trimmedText = text == null ? "" : text.trim();
+		String splitStr[] = trimmedText.indexOf(';') >= 0
+				? trimmedText.split("\\s*;\\s*")
+				: trimmedText.split("\\s+");
 		int meta = 0;
 		int size = 1;
-		//format: "name meta size"
+		// Preferred format: "name;meta;size"; whitespace remains accepted for old XML files.
 		if(splitStr.length > 1) {
 			try {
 				meta = Integer.parseInt(splitStr[1]);

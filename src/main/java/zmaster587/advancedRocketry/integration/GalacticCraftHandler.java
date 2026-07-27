@@ -11,15 +11,19 @@ import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import zmaster587.advancedRocketry.api.IPlanetaryProvider;
 
 public class GalacticCraftHandler {
 
 
 	@SubscribeEvent
 	public void GCSuffocationEvent(GCCoreOxygenSuffocationEvent.Pre event) {
-		
-		if(event.entity instanceof EntityPlayer) {
-			GCPlayerStats stats = GCPlayerStats.get((EntityPlayerMP) event.entity);
+		if(!(event.entity instanceof EntityPlayer)
+				|| !(event.entity.worldObj.provider instanceof IPlanetaryProvider))
+			return;
+
+		if(event.entity instanceof EntityPlayerMP) {
+			GCPlayerStats stats = GCPlayerStats.get((EntityPlayerMP)event.entity);
 			if(stats != null)
 				stats.oxygenSetupValid = true;
 		}
@@ -31,7 +35,9 @@ public class GalacticCraftHandler {
 	@SideOnly(Side.CLIENT)
 	public void tickFixAnnoyingOverlay(TickEvent.RenderTickEvent event) {
 
-		if(Minecraft.getMinecraft().thePlayer != null) {
+		if(Minecraft.getMinecraft().thePlayer != null
+				&& Minecraft.getMinecraft().thePlayer.worldObj.provider
+						instanceof IPlanetaryProvider) {
 			GCPlayerStatsClient stats = GCPlayerStatsClient.get((EntityPlayerSP)Minecraft.getMinecraft().thePlayer);
 			if(stats != null)
 				stats.oxygenSetupValid = true;

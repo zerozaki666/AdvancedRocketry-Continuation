@@ -37,6 +37,7 @@ public class StatsRocket {
 	private int fuelRateImpulse;
 
 	BlockPosition pilotSeatPos;
+	private boolean hasSeat;
 	private final List<BlockPosition> passengerSeats = new ArrayList<BlockPosition>();
 	private List<Vector3F<Float>> engineLoc;
 
@@ -49,7 +50,7 @@ public class StatsRocket {
 		fuelLiquid = 0;
 		drillingPower = 0f;
 		pilotSeatPos = new BlockPosition(0,0,0);
-		pilotSeatPos.x = -1;
+		clearSeat();
 		engineLoc = new ArrayList<Vector3F<Float>>();
 		statTags = new HashMap<String, Object>();
 	}
@@ -87,9 +88,25 @@ public class StatsRocket {
 	public void setWeight(int weight) { this.weight = weight; }
 
 	public void setSeatLocation(int x, int y, int z) {
+		if(x == -1 && y == -1 && z == -1) {
+			clearSeat();
+			return;
+		}
+		hasSeat = true;
 		pilotSeatPos.x = x;
 		pilotSeatPos.y = (short)y;
 		pilotSeatPos.z = z;
+	}
+
+	/**
+	 * Marks this rocket as having no pilot seat while retaining the public
+	 * legacy coordinate returned by {@link #getSeatX()}.
+	 */
+	public void clearSeat() {
+		hasSeat = false;
+		pilotSeatPos.x = -1;
+		pilotSeatPos.y = 0;
+		pilotSeatPos.z = 0;
 	}
 
 	public void addPassengerSeat(int x, int y, int z) {
@@ -132,6 +149,7 @@ public class StatsRocket {
 		}
 
 		stat.pilotSeatPos = new BlockPosition(this.pilotSeatPos.x, this.pilotSeatPos.y, this.pilotSeatPos.z);
+		stat.hasSeat = this.hasSeat;
 		stat.passengerSeats.addAll(passengerSeats);
 		stat.engineLoc = new ArrayList<Vector3F<Float>>(engineLoc);
 		stat.statTags = new HashMap<String, Object>(statTags);
@@ -310,7 +328,7 @@ public class StatsRocket {
 	 * @return true if a seat exists on this stat
 	 */
 	public boolean hasSeat() {
-		return pilotSeatPos.x != -1;
+		return hasSeat;
 	}
 
 	/**
@@ -328,7 +346,7 @@ public class StatsRocket {
 		}
 
 		fuelLiquid = 0;
-		pilotSeatPos.x = -1;
+		clearSeat();
 		clearEngineLocations();
 		passengerSeats.clear();
 		statTags.clear();
@@ -400,6 +418,7 @@ public class StatsRocket {
 		if(!dynStats.hasNoTags())
 			stats.setTag("dynStats", dynStats);
 
+		stats.setBoolean("hasSeat", hasSeat());
 		stats.setInteger("playerXPos", pilotSeatPos.x);
 		stats.setInteger("playerYPos", pilotSeatPos.y);
 		stats.setInteger("playerZPos", pilotSeatPos.z);
@@ -472,9 +491,16 @@ public class StatsRocket {
 				}
 			}
 
-			pilotSeatPos.x = stats.getInteger("playerXPos");
-			pilotSeatPos.y = (short)stats.getInteger("playerYPos");
-			pilotSeatPos.z = stats.getInteger("playerZPos");
+			int savedSeatX = stats.getInteger("playerXPos");
+			int savedSeatY = stats.getInteger("playerYPos");
+			int savedSeatZ = stats.getInteger("playerZPos");
+			boolean savedHasSeat = stats.hasKey("hasSeat")
+					? stats.getBoolean("hasSeat")
+					: savedSeatX != -1;
+			if(savedHasSeat)
+				setSeatLocation(savedSeatX, savedSeatY, savedSeatZ);
+			else
+				clearSeat();
 
 			if(stats.hasKey("engineLoc")) {
 				int locations[] = stats.getIntArray("engineLoc");

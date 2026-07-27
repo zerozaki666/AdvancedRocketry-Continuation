@@ -64,9 +64,14 @@ public class ItemAtmosphereAnalzer extends Item implements IArmorComponent {
 	public ItemStack onItemRightClick(ItemStack stack, World world,
 			EntityPlayer player) {
 		if(!world.isRemote) {
-			String str[] = getAtmosphereReadout(stack, (AtmosphereType) AtmosphereHandler.getOxygenHandler(world.provider.dimensionId).getAtmosphereType(player), world);
-			for(String str1 : str)
+			AtmosphereHandler handler =
+					AtmosphereHandler.getOxygenHandler(world.provider.dimensionId);
+			if(handler != null) {
+				String str[] = getAtmosphereReadout(stack,
+						(AtmosphereType)handler.getAtmosphereType(player), world);
+				for(String str1 : str)
 					player.addChatMessage(new ChatComponentText(str1));
+			}
 		}
 		return super.onItemRightClick(stack, world, player);
 	}

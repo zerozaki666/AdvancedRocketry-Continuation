@@ -39,16 +39,22 @@ public class ItemSatellite extends ItemIdWithName {
 
 			if(inv.getStackInSlot(0) == null)
 				return null;
-			
-			String satType = SatelliteRegistry.getSatelliteProperty(inv.getStackInSlot(0)).getSatelliteType();
+
+			SatelliteProperties mainProperties =
+					SatelliteRegistry.getSatelliteProperty(inv.getStackInSlot(0));
+			if(mainProperties == null)
+				return null;
+			String satType = mainProperties.getSatelliteType();
 			SatelliteBase sat = SatelliteRegistry.getSatallite(satType);
+			if(sat == null)
+				return null;
 
 			for(int i = 0; i < inv.getSizeInventory(); i++) {
 				ItemStack stack = inv.getStackInSlot(i);
 				if(stack != null) {
 					SatelliteProperties properties = SatelliteRegistry.getSatelliteProperty(stack);
 
-					if(!sat.acceptsItemInConstruction(stack))
+					if(properties == null || !sat.acceptsItemInConstruction(stack))
 						continue;
 
 					powerStorage += properties.getPowerStorage();

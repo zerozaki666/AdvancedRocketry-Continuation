@@ -1,17 +1,24 @@
 package zmaster587.advancedRocketry.dimension;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map.Entry;
-import java.util.Set;
-
+import net.minecraft.block.Block;
+import net.minecraft.entity.EntityList;
+import net.minecraft.entity.EntityLiving;
+import net.minecraft.init.Blocks;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.*;
+import net.minecraft.util.MathHelper;
+import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.Vec3;
+import net.minecraft.world.World;
+import net.minecraft.world.biome.BiomeGenBase;
+import net.minecraft.world.biome.BiomeGenBase.TempCategory;
+import net.minecraftforge.common.BiomeDictionary;
+import net.minecraftforge.common.BiomeManager;
+import net.minecraftforge.common.BiomeManager.BiomeEntry;
+import net.minecraftforge.common.util.Constants.NBT;
+import net.minecraftforge.fluids.Fluid;
+import net.minecraftforge.fluids.FluidRegistry;
 import org.apache.commons.lang3.ArrayUtils;
-
 import scala.util.Random;
 import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.AdvancedRocketryBiomes;
@@ -26,35 +33,18 @@ import zmaster587.advancedRocketry.atmosphere.AtmosphereType;
 import zmaster587.advancedRocketry.network.PacketDimInfo;
 import zmaster587.advancedRocketry.network.PacketSatellite;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
-import zmaster587.advancedRocketry.util.OreGenProperties;
 import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
+import zmaster587.advancedRocketry.util.OreGenProperties;
+import zmaster587.advancedRocketry.util.SpawnListEntryNBT;
 import zmaster587.advancedRocketry.world.ChunkManagerPlanet;
-import zmaster587.advancedRocketry.world.ChunkProviderPlanet;
 import zmaster587.advancedRocketry.world.provider.WorldProviderPlanet;
 import zmaster587.libVulpes.network.PacketHandler;
 import zmaster587.libVulpes.util.BlockPosition;
 import zmaster587.libVulpes.util.VulpineMath;
 import zmaster587.libVulpes.util.ZUtils;
-import net.minecraft.block.Block;
-import net.minecraft.init.Blocks;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.nbt.NBTTagFloat;
-import net.minecraft.nbt.NBTTagIntArray;
-import net.minecraft.nbt.NBTTagList;
-import net.minecraft.nbt.NBTTagString;
-import net.minecraft.util.MathHelper;
-import net.minecraft.util.ResourceLocation;
-import net.minecraft.util.Vec3;
-import net.minecraft.world.World;
-import net.minecraft.world.biome.BiomeGenBase;
-import net.minecraft.world.biome.BiomeGenBase.TempCategory;
-import net.minecraftforge.common.BiomeDictionary;
-import net.minecraftforge.common.BiomeManager;
-import net.minecraftforge.common.BiomeManager.BiomeEntry;
-import net.minecraftforge.common.util.Constants.NBT;
-import net.minecraftforge.fluids.Fluid;
-import net.minecraftforge.fluids.FluidRegistry;
+
+import java.util.*;
+import java.util.Map.Entry;
 
 public class DimensionProperties implements Cloneable, IDimensionProperties {
 
@@ -204,6 +194,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	public float[] fogColor;
 	public float[] ringColor;
 	public float gravitationalMultiplier;
+	public float mass;
 	public int orbitalDist;
 	public boolean hasOxygen;
 	private int atmosphereDensity;
@@ -248,7 +239,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	private HashMap<Long,SatelliteBase> tickingSatallites;
 	private List<Fluid> harvestableAtmosphere;
 	private HashSet<BlockPosition> beaconLocations;
-
+	private List<SpawnListEntryNBT> spawnableEntities;
 	public DimensionProperties(int id) {
 		name = "Temp";
 		resetProperties();
@@ -275,6 +266,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		beaconLocations = new HashSet<BlockPosition>();
 		seaLevel = 63;
 		generatorType = 0;
+		spawnableEntities = new LinkedList<>();
 	}
 
 	public void setGasGiant() {
@@ -323,6 +315,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		sunriseSunsetColors = new float[] {.7f,.2f,.2f,1};
 		ringColor = new float[] {.4f, .4f, .7f};
 		gravitationalMultiplier = 1;
+		mass = 1;
 		rotationalPeriod = 24000;
 		orbitalDist = 100;
 		originalAtmosphereDensity = atmosphereDensity = 100;
@@ -338,6 +331,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		oceanBlock = null;
 		fillerBlock = null;
 		generatorType = 0;
+		spawnableEntities=new LinkedList<>();
 	}
 
 	public List<Fluid> getHarvestableGasses() {
@@ -362,6 +356,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return the color of the sun as an array of floats represented as  {r,g,b}
 	 */
 	public float[] getSunColor() {
+		if(getStar() == null)
+			return new float[] { 0, 0, 0 };
 		return getStar().getColor();
 	}
 
@@ -579,7 +575,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 	/**
 	 * Sets this planet as a moon of the supplied planet's id.
-	 * @param parentId parent planet's DIMID, or -1 for none
+	 * @param parent parent planet's DimensionProperty
 	 */
 	public void setParentPlanet(DimensionProperties parent) {
 		this.setParentPlanet(parent, true);
@@ -587,7 +583,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 	/**
 	 * Sets this planet as a moon of the supplied planet's ID
-	 * @param parentId DIMID of the parent planet
+	 * @param parent DimensionProperty of the parent planet
 	 * @param update true to update the parent's planet to the change
 	 */
 	public void setParentPlanet(DimensionProperties parent, boolean update) {
@@ -1217,6 +1213,9 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 
 		gravitationalMultiplier = nbt.getFloat("gravitationalMultiplier");
+		mass = nbt.hasKey("mass")
+				? nbt.getFloat("mass")
+				: Math.max(gravitationalMultiplier, 0.01F);
 		orbitalDist = nbt.getInteger("orbitalDist");
 		orbitTheta = nbt.getDouble("orbitTheta");
 		baseOrbitTheta = nbt.getDouble("baseOrbitTheta");
@@ -1249,8 +1248,44 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 		//Note: parent planet must be set before setting the star otherwise it would cause duplicate planets in the StellarBody's array
 		parentPlanet = nbt.getInteger("parentPlanet");
-		this.setStar( DimensionManager.getInstance().getStar(nbt.getInteger("starId")));
+		starId = nbt.getInteger("starId");
+		StellarBody loadedStar = DimensionManager.getInstance().getStar(starId);
+		if(loadedStar != null)
+			setStar(loadedStar);
 
+
+		spawnableEntities.clear();
+		NBTTagList spawnableEntityNbt = nbt.getTagList("spawnableEntities",10);
+		for (int i=0;i<spawnableEntityNbt.tagCount();i++) {
+			NBTTagCompound entityNbt = spawnableEntityNbt.getCompoundTagAt(i);
+			String entityName = entityNbt.getString("entityName");
+			int weight = entityNbt.getInteger("weight");
+			int groupMin = entityNbt.getInteger("groupMin");
+			int groupMax = entityNbt.getInteger("groupMax");
+			Class<?> entityClass = (Class<?>)EntityList.stringToClassMapping.get(entityName);
+			if(entityClass == null) {
+				try {
+					entityClass = Class.forName(entityName);
+				} catch(ClassNotFoundException ignored) {
+				}
+			}
+			if(entityClass != null && EntityLiving.class.isAssignableFrom(entityClass)) {
+				SpawnListEntryNBT entry = new SpawnListEntryNBT(
+						(Class<? extends EntityLiving>)entityClass, weight, groupMin,
+						groupMax, entityName);
+				boolean validEntry = true;
+				if(entityNbt.hasKey("nbt")) {
+					try {
+						entry.setNbt(entityNbt.getString("nbt"));
+					} catch(Exception exception) {
+						validEntry = false;
+						AdvancedRocketry.logger.warn("Ignoring invalid saved spawn NBT for " + entityName, exception);
+					}
+				}
+				if(validEntry)
+					spawnableEntities.add(entry);
+			}
+		}
 		//Satallites
 
 		if(nbt.hasKey("satallites")) {
@@ -1269,6 +1304,10 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 					//Check for NBT errors
 					try {
 						SatelliteBase satallite = SatelliteRegistry.createFromNBT(satalliteNbt);
+						if(satallite == null) {
+							AdvancedRocketry.logger.warn("Satellite with unknown data type detected, removing");
+							continue;
+						}
 
 						satallites.put(longKey, satallite);
 
@@ -1376,6 +1415,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 		nbt.setInteger("starId", starId);
 		nbt.setFloat("gravitationalMultiplier", gravitationalMultiplier);
+		nbt.setFloat("mass", getMass());
 		nbt.setInteger("orbitalDist", orbitalDist);
 		nbt.setDouble("orbitTheta", orbitTheta);
 		nbt.setDouble("baseOrbitTheta", baseOrbitTheta);
@@ -1401,9 +1441,30 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 			NBTTagIntArray childArray = new NBTTagIntArray(ArrayUtils.toPrimitive(childPlanets.toArray(intList)));
 			nbt.setTag("childrenPlanets", childArray);
 		}
-
 		nbt.setInteger("parentPlanet", parentPlanet);
 
+		if (!spawnableEntities.isEmpty()){
+			NBTTagList tmpList = new NBTTagList();
+			for (SpawnListEntryNBT spawnableEntity : spawnableEntities) {
+				NBTTagCompound tmpCompound=new NBTTagCompound();
+				String entityName = spawnableEntity.getEntityIdentifier();
+				if(entityName == null || entityName.isEmpty()) {
+					Object registeredName =
+							EntityList.classToStringMapping.get(spawnableEntity.entityClass);
+					entityName = registeredName instanceof String
+							? (String)registeredName
+							: spawnableEntity.entityClass.getName();
+				}
+				tmpCompound.setString("entityName", entityName);
+				tmpCompound.setInteger("weight",spawnableEntity.itemWeight);
+				tmpCompound.setInteger("groupMin",spawnableEntity.minGroupCount);
+				tmpCompound.setInteger("groupMax",spawnableEntity.maxGroupCount);
+				if(!spawnableEntity.getNBTString().isEmpty())
+					tmpCompound.setString("nbt", spawnableEntity.getNBTString());
+				tmpList.appendTag(tmpCompound);
+			}
+			nbt.setTag("spawnableEntities", tmpList);
+		}
 		//Satallites
 
 		if(!satallites.isEmpty()) {
@@ -1487,6 +1548,23 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		return orbitTheta;
 	}
 
+	public double getOrbitPhi() {
+		return orbitalPhi;
+	}
+
+	/**
+	 * Epoch angle used by deterministic universe simulation.  Unlike
+	 * {@link #getOrbitTheta()}, this value does not already include elapsed
+	 * world time.
+	 */
+	public double getBaseOrbitTheta() {
+		return baseOrbitTheta;
+	}
+
+	public float getMass() {
+		return mass > 0 ? mass : Math.max(gravitationalMultiplier, 0.01F);
+	}
+
 	@Override
 	public int getOrbitalDist() {
 		return orbitalDist;
@@ -1523,5 +1601,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 	public int getGenType() {
 		return generatorType;
+	}
+	public List<SpawnListEntryNBT> getSpawnListEntries() {
+		return spawnableEntities;
 	}
 }

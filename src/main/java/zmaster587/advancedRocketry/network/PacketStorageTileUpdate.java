@@ -16,10 +16,8 @@ import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 import net.minecraftforge.common.DimensionManager;
-import zmaster587.advancedRocketry.api.EntityRocketBase;
 import zmaster587.advancedRocketry.entity.EntityRocket;
 import zmaster587.advancedRocketry.util.StorageChunk;
-import zmaster587.libVulpes.interfaces.INetworkEntity;
 import zmaster587.libVulpes.network.BasePacket;
 
 public class PacketStorageTileUpdate extends BasePacket {
@@ -90,7 +88,7 @@ public class PacketStorageTileUpdate extends BasePacket {
 		this.nbt = nbt;
 
 
-		if(ent != null && ent instanceof INetworkEntity) {
+		if(ent instanceof EntityRocket) {
 			entity = (EntityRocket)ent;
 			this.chunk = entity.storage;
 		}

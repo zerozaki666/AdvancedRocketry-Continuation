@@ -7,15 +7,11 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.world.World;
 import net.minecraftforge.oredict.OreDictionary;
-import zmaster587.advancedRocketry.api.AdvancedRocketryBlocks;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
 import zmaster587.libVulpes.api.LibVulpesBlocks;
-import zmaster587.libVulpes.api.material.AllowedProducts;
-import zmaster587.libVulpes.api.material.Material;
-import zmaster587.libVulpes.api.material.MaterialRegistry;
 import zmaster587.libVulpes.block.BlockMeta;
 import zmaster587.libVulpes.tile.multiblock.TileMultiBlock;
 
@@ -63,27 +59,38 @@ public class TileWarpCore extends TileMultiBlock {
 			attemptCompleteStructure();
 		}
 		
-		if(getSpaceObject() == null || getSpaceObject().getFuelAmount() == getSpaceObject().getMaxFuelAmount())
+		if(worldObj.isRemote || getSpaceObject() == null || getSpaceObject().getFuelAmount() == getSpaceObject().getMaxFuelAmount())
 			return;
 		for(IInventory inv : itemInPorts) {
 			for(int i = 0; i < inv.getSizeInventory(); i++) {
 				ItemStack stack = inv.getStackInSlot(i);
-				int amt = 0;
-				if(stack != null && OreDictionary.itemMatches(MaterialRegistry.getItemStackFromMaterialAndType("Dilithium", AllowedProducts.getProductByName("CRYSTAL")), stack, false)) {
-					int stackSize = stack.stackSize;
-					if(!worldObj.isRemote)
-						amt = getSpaceObject().addFuel(Configuration.fuelPointsPerDilithium*stack.stackSize);
-					else
-						amt = Math.min(getSpaceObject().getFuelAmount() + 10*stack.stackSize, getSpaceObject().getMaxFuelAmount()) - getSpaceObject().getFuelAmount();//
-					inv.decrStackSize(i, amt/10);
-					inv.markDirty();
-					
-					//If full
-					if(stackSize/10 != amt)
+				if(stack != null && isDilithium(stack)) {
+					int fuelPerItem = Math.max(1, Configuration.fuelPointsPerDilithium);
+					int missingFuel = getSpaceObject().getMaxFuelAmount() - getSpaceObject().getFuelAmount();
+					int itemsToConsume = Math.min(stack.stackSize, (missingFuel + fuelPerItem - 1) / fuelPerItem);
+					int fuelAdded = getSpaceObject().addFuel(fuelPerItem * itemsToConsume);
+					int itemsConsumed = Math.min(itemsToConsume, (fuelAdded + fuelPerItem - 1) / fuelPerItem);
+
+					if(itemsConsumed > 0) {
+						inv.decrStackSize(i, itemsConsumed);
+						inv.markDirty();
+					}
+
+					if(getSpaceObject().getFuelAmount() >= getSpaceObject().getMaxFuelAmount())
 						return;
 				}
 			}
 		}
+	}
+
+	private static boolean isDilithium(ItemStack stack) {
+		int gemDilithium = OreDictionary.getOreID("gemDilithium");
+		int crystalDilithium = OreDictionary.getOreID("crystalDilithium");
+		for(int oreId : OreDictionary.getOreIDs(stack)) {
+			if(oreId == gemDilithium || oreId == crystalDilithium)
+				return true;
+		}
+		return false;
 	}
 
 	@Override

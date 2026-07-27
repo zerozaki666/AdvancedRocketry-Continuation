@@ -43,7 +43,11 @@ public class SatelliteOreMapping extends SatelliteBase  {
 	}
 
 	public boolean acceptsItemInConstruction(ItemStack item) {
-		int flag = SatelliteRegistry.getSatelliteProperty(item).getPropertyFlag();
+		SatelliteProperties properties =
+				SatelliteRegistry.getSatelliteProperty(item);
+		if(properties == null)
+			return false;
+		int flag = properties.getPropertyFlag();
 		return SatelliteProperties.Property.MAIN.isOfType(flag) || SatelliteProperties.Property.POWER_GEN.isOfType(flag) || SatelliteProperties.Property.DATA.isOfType(flag);
 	}
 

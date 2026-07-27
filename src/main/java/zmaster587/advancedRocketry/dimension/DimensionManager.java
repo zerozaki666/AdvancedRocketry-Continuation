@@ -202,7 +202,9 @@ public class DimensionManager implements IGalaxy {
 	 * @param properties to set for that dimension
 	 */
 	public void setDimProperties( int dimId, DimensionProperties properties) {
-		dimensionList.put(new Integer(dimId),properties);
+		dimensionList.put(dimId, properties);
+		if(dimId == 0)
+			overworldProperties = properties;
 	}
 
 	/**
@@ -245,12 +247,15 @@ public class DimensionManager implements IGalaxy {
 	 * @return the new dimension properties created for this planet
 	 */
 	public DimensionProperties generateRandom(int starId, String name, int baseAtmosphere, int baseDistance, int baseGravity,int atmosphereFactor, int distanceFactor, int gravityFactor) {
+		StellarBody star = getStar(starId);
+		if(star == null)
+			return null;
 		DimensionProperties properties = new DimensionProperties(getNextFreeDim(dimOffset));
 
 		if(properties.getId() == -1)
 			return null;
 
-		if(name == "")
+		if(name == null || name.isEmpty())
 			properties.setName(getNextName(properties.getId()));
 		else {
 			properties.setName(name);
@@ -258,7 +263,7 @@ public class DimensionManager implements IGalaxy {
 		properties.setAtmosphereDensityDirect(MathHelper.clamp_int(baseAtmosphere + random.nextInt(atmosphereFactor) - atmosphereFactor/2, DimensionProperties.MIN_ATM_PRESSURE, DimensionProperties.MAX_ATM_PRESSURE)); 
 		int newDist = properties.orbitalDist = MathHelper.clamp_int(baseDistance + random.nextInt(distanceFactor), DimensionProperties.MIN_DISTANCE, DimensionProperties.MAX_DISTANCE);
 
-		properties.gravitationalMultiplier = Math.min(Math.max(0.05f,(baseGravity + random.nextInt(gravityFactor) - gravityFactor/2)/100f), 1.3f);
+		properties.gravitationalMultiplier = Math.min(Math.max(0.05f,(baseGravity + random.nextInt(gravityFactor) - gravityFactor/2f)/100f), 1.3f);
 
 		double minDistance;
 		int walkDist = 0;
@@ -266,7 +271,7 @@ public class DimensionManager implements IGalaxy {
 		do {
 			minDistance = Double.MAX_VALUE;
 
-			for(IDimensionProperties properties2 : getStar(starId).getPlanets()) {
+			for(IDimensionProperties properties2 : star.getPlanets()) {
 				int dist = Math.abs(((DimensionProperties)properties2).orbitalDist - newDist);
 				if(minDistance > dist)
 					minDistance = dist;
@@ -287,7 +292,7 @@ public class DimensionManager implements IGalaxy {
 		properties.rotationalPhi = (random.nextGaussian() -0.5d)*180;
 
 		//Get Star Color
-		properties.setStar(getStar(starId));
+		properties.setStar(star);
 
 		//Earth is nominal at ~290
 		properties.averageTemperature = AstronomicalBodyHelper.getAverageTemperature(properties.getStar(), properties.getSolarOrbitalDistance(), properties.getAtmosphereDensity());
@@ -307,9 +312,9 @@ public class DimensionManager implements IGalaxy {
 			properties.setSeaLevel(random.nextInt(40) + 43);
 		}
 
-		properties.skyColor[0] *= 1 - MathHelper.clamp_float(random.nextFloat()*0.1f + (70 - properties.averageTemperature/3)/100f,0.2f,1);
+		properties.skyColor[0] *= 1 - MathHelper.clamp_float(random.nextFloat()*0.1f + (70 - properties.averageTemperature/3f)/100f,0.2f,1);
 		properties.skyColor[1] *= 1 - (random.nextFloat()*.5f);
-		properties.skyColor[2] *= 1 - MathHelper.clamp_float(random.nextFloat()*0.1f + (properties.averageTemperature/3 - 70)/100f,0,1);
+		properties.skyColor[2] *= 1 - MathHelper.clamp_float(random.nextFloat()*0.1f + (properties.averageTemperature/3f - 70)/100f,0,1);
 
 		if(random.nextInt() % 50 == 0)
 		{
@@ -333,16 +338,19 @@ public class DimensionManager implements IGalaxy {
 	}
 
 	public DimensionProperties generateRandomGasGiant(int starId, String name, int baseAtmosphere, int baseDistance, int baseGravity,int atmosphereFactor, int distanceFactor, int gravityFactor) {
+		StellarBody star = getStar(starId);
+		if(star == null)
+			return null;
 		DimensionProperties properties = new DimensionProperties(getNextFreeDim(dimOffset));
 
-		if(name == "")
+		if(name == null || name.isEmpty())
 			properties.setName(getNextName(properties.getId()));
 		else {
 			properties.setName(name);
 		}
 		properties.setAtmosphereDensityDirect(MathHelper.clamp_int(baseAtmosphere + random.nextInt(atmosphereFactor) - atmosphereFactor/2, DimensionProperties.MIN_ATM_PRESSURE, DimensionProperties.MAX_ATM_PRESSURE)); 
 		properties.orbitalDist = MathHelper.clamp_int(baseDistance + random.nextInt(distanceFactor), DimensionProperties.MIN_DISTANCE, 800);
-		properties.gravitationalMultiplier = Math.min(Math.max(0.05f,(baseGravity + random.nextInt(gravityFactor) - gravityFactor/2)/100f), 1.3f);
+		properties.gravitationalMultiplier = Math.min(Math.max(0.05f,(baseGravity + random.nextInt(gravityFactor) - gravityFactor/2f)/100f), 1.3f);
 
 		double minDistance;
 
@@ -351,7 +359,7 @@ public class DimensionManager implements IGalaxy {
 
 			properties.baseOrbitTheta  = random.nextInt(360)*Math.PI/180d;
 
-			for(IDimensionProperties properties2 : getStar(starId).getPlanets()) {
+			for(IDimensionProperties properties2 : star.getPlanets()) {
 				double dist = Math.abs(((DimensionProperties)properties2).baseOrbitTheta - properties.baseOrbitTheta);
 				if(dist < minDistance)
 					minDistance = dist;
@@ -360,7 +368,7 @@ public class DimensionManager implements IGalaxy {
 		} while(minDistance < (Math.PI/40f));
 
 		//Get Star Color
-		properties.setStar(getStar(starId));
+		properties.setStar(star);
 
 		//Linear is easier. Earth is nominal!
 		properties.averageTemperature = AstronomicalBodyHelper.getAverageTemperature(properties.getStar(), properties.getSolarOrbitalDistance(), properties.getAtmosphereDensity());
@@ -488,7 +496,8 @@ public class DimensionManager implements IGalaxy {
 	@Override
 	public DimensionProperties getDimensionProperties(int dimId) {
 		DimensionProperties properties = dimensionList.get(new Integer(dimId));
-		if(dimId == Configuration.spaceDimId || dimId == Integer.MIN_VALUE) {
+		if(dimId == Configuration.spaceDimId || dimId == Configuration.freeSpaceDimId
+				|| dimId == Integer.MIN_VALUE) {
 			return defaultSpaceDimensionProperties;
 		}
 		return properties == null ? overworldProperties : properties;
@@ -639,7 +648,9 @@ public class DimensionManager implements IGalaxy {
 	 * @return true if the dimension exists and is registered
 	 */
 	public boolean isDimensionCreated( int dimId) {
-		return dimensionList.containsKey(new Integer(dimId)) || dimId == Configuration.spaceDimId;
+		return dimensionList.containsKey(new Integer(dimId))
+				|| dimId == Configuration.spaceDimId
+				|| dimId == Configuration.freeSpaceDimId;
 	}
 
 	/**
@@ -717,7 +728,7 @@ public class DimensionManager implements IGalaxy {
 					//propeties.isNativeDimension = true;
 				}
 
-				dimensionList.put(new Integer(keyInt), propeties);
+				setDimProperties(keyInt, propeties);
 			}
 			else{
 				Logger.getLogger("advancedRocketry").warning("Null Dimension Properties Recieved");

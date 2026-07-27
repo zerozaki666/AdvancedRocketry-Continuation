@@ -1,3 +1,12 @@
- 
+rootProject.name = 'AdvancedRocketry-Continuation'
+
 include 'libVulpes'
-project(':libVulpes').projectDir = new File('../libVulpes');
+def continuationLib =
+        new File(settingsDir, '../libVulpes-Continuation').canonicalFile
+def legacyLib = new File(settingsDir, '../libVulpes').canonicalFile
+if (!continuationLib.isDirectory() && !legacyLib.isDirectory()) {
+    throw new GradleException(
+            'Expected ../libVulpes-Continuation or ../libVulpes')
+}
+project(':libVulpes').projectDir =
+        continuationLib.isDirectory() ? continuationLib : legacyLib

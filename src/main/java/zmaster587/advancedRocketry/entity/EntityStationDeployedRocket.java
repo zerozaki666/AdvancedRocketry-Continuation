@@ -68,7 +68,7 @@ public class EntityStationDeployedRocket extends EntityRocket {
 		super(world, storage, stats, x,y,z);
 		launchLocation = new BlockPosition((int)x,(int)y,(int)z);
 		launchDirection = ForgeDirection.DOWN;
-		stats.setSeatLocation(-1, -1, -1); //No seats
+		stats.clearSeat();
 		atmText = new ModuleText(182, 114, "", 0x2d2d2d);
 		gasId = 0;
 	}

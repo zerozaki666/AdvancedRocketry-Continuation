@@ -103,6 +103,11 @@ import zmaster587.libVulpes.util.Vector3F;
 
 public class ClientProxy extends CommonProxy {
 
+	@Override
+	public boolean isIntegratedServerRunning() {
+		return Minecraft.getMinecraft().isIntegratedServerRunning();
+	}
+
 	public static int transcieverRenderType;
 	
 	@Override
@@ -144,6 +149,8 @@ public class ClientProxy extends CommonProxy {
 		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockSawBlade), blockRenderer);
 		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockAdvEngine), blockRenderer);
 		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockEngine), blockRenderer);
+		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockAdvEngineDivider), blockRenderer);
+		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockEngineDivider), blockRenderer);
 		MinecraftForgeClient.registerItemRenderer(Item.getItemFromBlock(AdvancedRocketryBlocks.blockFuelTank), blockRenderer);
 		RendererBucket bucket =  new RendererBucket();
 		MinecraftForgeClient.registerItemRenderer(AdvancedRocketryItems.itemBucketRocketFuel, bucket);
@@ -200,35 +207,35 @@ public class ClientProxy extends CommonProxy {
 
 	@Override
 	public void spawnParticle(String particle, World world, double x, double y, double z, double motionX, double motionY, double motionZ) {
-		if(particle == "rocketFlame") {
+		if("rocketFlame".equals(particle)) {
 			RocketFx fx = new RocketFx(world, x, y, z, motionX, motionY, motionZ);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "smallRocketFlame") {
+		else if("smallRocketFlame".equals(particle)) {
 			RocketFx fx = new RocketFx(world, x, y, z, motionX, motionY, motionZ, 0.25f);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "rocketSmoke") {
+		else if("rocketSmoke".equals(particle)) {
 			TrailFx fx = new TrailFx(world, x, y, z, motionX, motionY, motionZ);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "rocketSmokeInverse") {
+		else if("rocketSmokeInverse".equals(particle)) {
 			InverseTrailFx fx = new InverseTrailFx(world, x, y, z, motionX, motionY, motionZ);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "arc") {
+		else if("arc".equals(particle)) {
 			FxElectricArc fx = new FxElectricArc(world, x, y, z, motionX);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "smallLazer") {
+		else if("smallLazer".equals(particle)) {
 			FxSkyLaser fx = new FxSkyLaser(world, x, y, z);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle == "errorBox") {
+		else if("errorBox".equals(particle)) {
 			FxErrorBlock fx = new FxErrorBlock(world, x, y, z);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}
-		else if(particle.equals("gravityEffect")) {
+		else if("gravityEffect".equals(particle)) {
 			FxGravityEffect fx = new FxGravityEffect(world, x, y, z, motionX, motionY, motionZ);
 			Minecraft.getMinecraft().effectRenderer.addEffect(fx);
 		}

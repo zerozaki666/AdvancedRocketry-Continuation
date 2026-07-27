@@ -267,7 +267,7 @@ public class TileStationDeployedAssembler extends TileRocketBuilder {
 			//if(!stats.hasSeat() && !hasSatellite) 
 			//status = ErrorCodes.NOSEAT;
 			/*else*/
-			if(getFuel() < getNeededFuel()*(1 + fluidCapacity/1000)) 
+			if(getFuel() < getNeededFuel()*(1 + fluidCapacity/1000f))
 				status = ErrorCodes.NOFUEL;
 			else if(getThrust() < getNeededThrust()) 
 				status = ErrorCodes.NOENGINES;

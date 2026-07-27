@@ -3,6 +3,7 @@ package zmaster587.advancedRocketry.integration.nei;
 import static codechicken.lib.gui.GuiDraw.drawTexturedModalRect;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.inventory.GuiContainer;
+import net.minecraft.client.resources.I18n;
 
 import java.awt.Rectangle;
 import java.util.LinkedList;
@@ -20,7 +21,7 @@ public class PrecisionAssemberNEI extends TemplateNEI {
 	
 	@Override
 	public String getRecipeName() {
-		return "Precision Assembler";
+		return I18n.format("gui.nei.PrecisionAssember");
 	}
 	
 	
@@ -41,13 +42,13 @@ public class PrecisionAssemberNEI extends TemplateNEI {
     	
     	//(cycleticks % 100) /100f;
     	if(mode == 0)
-    		drawProgressBar(93, 23, 54, 42, 13, 15, (cycleticks % (ticksPerBar/3)) /(float)(ticksPerBar/3), 1);
+		drawProgressBar(93, 23, 54, 42, 13, 15, (cycleticks % ((float)ticksPerBar/3)) /(float)(ticksPerBar/3), 1);
     	else if(mode == 1) {
     		drawTexturedModalRect(61, 22, 78, 42, 12, 13);
     		
     		drawTexturedModalRect(93, 23, 54, 42, 13, 15);
     		
-    		drawProgressBar(94, 42, 67, 42, 11, 15, (cycleticks % (ticksPerBar/3)) /(float)(ticksPerBar/3), 1);
+		drawProgressBar(94, 42, 67, 42, 11, 15, (cycleticks % ((float)ticksPerBar/3)) /(float)(ticksPerBar/3), 1);
     	}
     	else if(mode == 2) {
     		drawTexturedModalRect(59, 51, 54, 57, 14, 9);
@@ -56,7 +57,7 @@ public class PrecisionAssemberNEI extends TemplateNEI {
     		drawTexturedModalRect(93, 23, 54, 42, 13, 15);
     		drawTexturedModalRect(94, 42, 67, 42, 11, 15);
     		
-    		drawProgressBar(89, 63, 90, 42, 22, 3, (cycleticks % (ticksPerBar/3)) /(float)(ticksPerBar/3), 0);
+		drawProgressBar(89, 63, 90, 42, 22, 3, (cycleticks % ((float)ticksPerBar/3)) /(float)(ticksPerBar/3), 0);
     	}
     }
 

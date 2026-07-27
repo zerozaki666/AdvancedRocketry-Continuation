@@ -338,7 +338,7 @@ public class SpaceObjectManager implements ISpaceObjectManager {
 			
 			temporaryDimensionPlayerNumber.put(stationId, temporaryDimensionPlayerNumber.get(stationId)+1);
 		}
-		if(event.fromDim != Configuration.spaceDimId) 
+		if(event.fromDim != Configuration.spaceDimId)
 			return;
 		
 		ISpaceObject spaceObj = getSpaceStationFromBlockCoords((int)event.player.posX, (int)event.player.posZ);

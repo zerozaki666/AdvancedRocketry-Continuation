@@ -20,7 +20,7 @@ public class StellarBody {
 	float color[];
 	int id;
 	String name;
-	short posX, posZ;
+	int posX, posY, posZ;
 	float size;
 	public List<StellarBody> subStars;
 	float starSeperation;
@@ -57,21 +57,33 @@ public class StellarBody {
 	public float getSize() {
 		return size;
 	}
+
+	public float getMass() {
+		return Math.max(size*size, 0.01F);
+	}
 	
 	public void setSize(float size) {
 		this.size = size;
 	}
 	
 	public void setPosX(int x) {
-		posX = (short)x;
+		posX = x;
 	}
 
-	public void setPosZ(int x) {
-		posZ = (short)x;
+	public void setPosY(int y) {
+		posY = y;
+	}
+
+	public void setPosZ(int z) {
+		posZ = z;
 	}
 
 	public int getPosX() {
 		return posX;
+	}
+
+	public int getPosY() {
+		return posY;
 	}
 
 	public int getPosZ() {
@@ -210,8 +222,9 @@ public class StellarBody {
 		nbt.setInteger("id", this.id);
 		nbt.setInteger("temperature", temperature);
 		nbt.setString("name", name);
-		nbt.setShort("posX", posX);
-		nbt.setShort("posZ", posZ);
+		nbt.setInteger("posX", posX);
+		nbt.setInteger("posY", posY);
+		nbt.setInteger("posZ", posZ);
 		nbt.setFloat("size", size);
 		nbt.setFloat("seperation", starSeperation);
 		
@@ -231,8 +244,10 @@ public class StellarBody {
 		id = nbt.getInteger("id");
 		temperature = nbt.getInteger("temperature");
 		name = nbt.getString("name");
-		posX = nbt.getShort("posX");
-		posZ = nbt.getShort("posZ");
+		// getInteger accepts all numeric NBT types, including legacy shorts.
+		posX = nbt.getInteger("posX");
+		posY = nbt.getInteger("posY");
+		posZ = nbt.getInteger("posZ");
 		
 		if(nbt.hasKey("size"))
 			size = nbt.getFloat("size");

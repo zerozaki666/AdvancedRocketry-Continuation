@@ -8,9 +8,10 @@ import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
+import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
-import zmaster587.advancedRocketry.dimension.DimensionProperties;
+import zmaster587.advancedRocketry.dimension.sim.AdvancedRocketryUniverse;
 import zmaster587.libVulpes.network.BasePacket;
 
 public class PacketStellarInfo extends BasePacket {
@@ -29,8 +30,8 @@ public class PacketStellarInfo extends BasePacket {
 		NBTTagCompound nbt = new NBTTagCompound();
 		out.writeInt(starId);
 		out.writeBoolean(star == null);
-
-
+		if(star == null)
+			return;
 		star.writeToNBT(nbt);
 
 		PacketBuffer packetBuffer = new PacketBuffer(out);
@@ -51,7 +52,7 @@ public class PacketStellarInfo extends BasePacket {
 		starId = in.readInt();
 
 		if(in.readBoolean()) {
-			if(DimensionManager.getInstance().isDimensionCreated(starId)) {
+			if(DimensionManager.getInstance().getStar(starId) != null) {
 				DimensionManager.getInstance().removeStar(starId);
 			}
 		}
@@ -83,7 +84,10 @@ public class PacketStellarInfo extends BasePacket {
 	}
 
 	@Override
-	public void executeClient(EntityPlayer thePlayer) {}
+	public void executeClient(EntityPlayer thePlayer) {
+		if(!AdvancedRocketry.proxy.isIntegratedServerRunning())
+			AdvancedRocketryUniverse.refresh();
+	}
 
 	@Override
 	public void executeServer(EntityPlayerMP player) {}

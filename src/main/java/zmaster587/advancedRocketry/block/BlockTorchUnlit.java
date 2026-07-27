@@ -45,8 +45,15 @@ public class BlockTorchUnlit extends BlockTorch {
 			int y, int z, EntityPlayer player,
 			int p_149727_6_, float p_149727_7_, float p_149727_8_,
 			float p_149727_9_) {
-		
-		if(!world.isRemote && player.getCurrentEquippedItem() != null && AtmosphereHandler.getOxygenHandler(world.provider.dimensionId).getAtmosphereType(x, y, z).allowsCombustion() && (player.getCurrentEquippedItem().getItem() == Item.getItemFromBlock(Blocks.torch) || 
+
+		if(world.isRemote || player.getCurrentEquippedItem() == null)
+			return true;
+
+		AtmosphereHandler handler =
+				AtmosphereHandler.getOxygenHandler(world.provider.dimensionId);
+		if(handler != null
+				&& handler.getAtmosphereType(x, y, z).allowsCombustion()
+				&& (player.getCurrentEquippedItem().getItem() == Item.getItemFromBlock(Blocks.torch) ||
 				player.getCurrentEquippedItem().getItem() == Items.flint_and_steel || 
 				player.getCurrentEquippedItem().getItem() == Items.fire_charge)) {
 			

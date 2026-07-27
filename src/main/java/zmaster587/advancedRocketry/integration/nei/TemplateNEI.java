@@ -20,7 +20,6 @@ import net.minecraftforge.fluids.IFluidContainerItem;
 
 import org.lwjgl.opengl.GL11;
 
-import zmaster587.advancedRocketry.integration.nei.PositionedFluidStack;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.libVulpes.client.util.ProgressBarImage;
 import zmaster587.libVulpes.interfaces.IRecipe;

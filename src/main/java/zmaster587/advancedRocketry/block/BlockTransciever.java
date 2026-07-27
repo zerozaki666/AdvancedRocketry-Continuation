@@ -36,7 +36,7 @@ public class BlockTransciever extends BlockTile implements ISimpleBlockRendering
 			int x, int y, int z) {
 		int meta = world.getBlockMetadata(x, y, z);
 		
-		if( meta > 2 || meta < 6)
+		if(meta < 2 || meta >= 6)
 			return;
 		
 		AxisAlignedBB newBB = bb[meta - 2];
@@ -91,7 +91,7 @@ public class BlockTransciever extends BlockTile implements ISimpleBlockRendering
 	@SideOnly(Side.CLIENT)
 	public boolean render(int x, int y, int z, int meta)
 	{
-		if( meta < 2 || meta > 6)
+		if(meta < 2 || meta >= 6)
 			return false;
 		
 		IIcon glowTex = AdvancedRocketryBlocks.blockTransciever.getBlockTextureFromSide(0);

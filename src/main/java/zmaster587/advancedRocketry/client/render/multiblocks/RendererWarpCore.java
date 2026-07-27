@@ -7,7 +7,7 @@ import zmaster587.advancedRocketry.api.stations.ISpaceObject;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
-import zmaster587.advancedRocketry.world.provider.WorldProviderSpace;
+import zmaster587.advancedRocketry.world.provider.WorldProviderStation;
 import zmaster587.libVulpes.block.RotatableBlock;
 import zmaster587.libVulpes.render.RenderHelper;
 import zmaster587.libVulpes.tile.multiblock.TileMultiBlock;
@@ -76,7 +76,7 @@ public class RendererWarpCore extends TileEntitySpecialRenderer {
 		GL11.glEnable(GL11.GL_LIGHTING);
 
 		
-		if(tile.getWorldObj().provider instanceof WorldProviderSpace) {
+		if(tile.getWorldObj().provider instanceof WorldProviderStation) {
 			
 			ISpaceObject obj = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(tile.xCoord, tile.zCoord);
 			if(obj instanceof SpaceObject && ((SpaceObject)obj).getFuelAmount() > 50) {

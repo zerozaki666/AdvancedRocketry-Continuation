@@ -29,7 +29,11 @@ public abstract class SatelliteBase {
 	}
 	
 	public boolean acceptsItemInConstruction(ItemStack item) {
-		int flag = SatelliteRegistry.getSatelliteProperty(item).getPropertyFlag();
+		SatelliteProperties properties =
+				SatelliteRegistry.getSatelliteProperty(item);
+		if(properties == null)
+			return false;
+		int flag = properties.getPropertyFlag();
 		return SatelliteProperties.Property.MAIN.isOfType(flag);
 	}
 	

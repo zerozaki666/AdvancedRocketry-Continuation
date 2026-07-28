@@ -335,7 +335,7 @@ public class GuiOreMappingSatellite extends GuiContainer {
 		//Render player location
 		float offsetX = playerPosX - xCenter;
 		float offsetY = zCenter - playerPosZ ;
-		double numPixels = SCREEN_SIZE/scanSize;//(scanSize/(float)(SCREEN_SIZE*radius));
+		double numPixels = (double)SCREEN_SIZE/scanSize;//(scanSize/(float)(SCREEN_SIZE*radius));
 
 
 		float radius = 2;

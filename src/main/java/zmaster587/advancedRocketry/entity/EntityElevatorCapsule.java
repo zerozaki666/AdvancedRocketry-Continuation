@@ -248,7 +248,8 @@ public class EntityElevatorCapsule extends Entity implements INetworkEntity {
 				setSourceTile(srcTilePos);
 		}
 		
-		if(isAscending()) {
+		if(isAscending() && srcTilePos != null && srcTilePos.pos != null
+				&& dstTilePos != null && dstTilePos.pos != null) {
 
 			if(this.posY > 255)
 				this.motionY = 2.85;
@@ -329,7 +330,8 @@ public class EntityElevatorCapsule extends Entity implements INetworkEntity {
 						ent.mountEntity(this);
 				}
 
-				if(this.posY <= dstTilePos.pos.y) {
+				if(dstTilePos != null && dstTilePos.pos != null
+						&& this.posY <= dstTilePos.pos.y) {
 					setCapsuleMotion(0);
 
 

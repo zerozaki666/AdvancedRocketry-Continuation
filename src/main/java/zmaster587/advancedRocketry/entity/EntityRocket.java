@@ -1,20 +1,14 @@
 package zmaster587.advancedRocketry.entity;
 
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import io.netty.buffer.ByteBuf;
-
-import java.lang.ref.WeakReference;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.ListIterator;
-
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.GLAllocation;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Blocks;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
@@ -23,27 +17,19 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.ChatComponentText;
+import net.minecraft.util.ChatComponentTranslation;
+import net.minecraft.util.Vec3;
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.util.ForgeDirection;
-import net.minecraftforge.fluids.FluidContainerRegistry;
-import net.minecraftforge.fluids.FluidStack;
-import net.minecraftforge.fluids.IFluidContainerItem;
 import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.achievements.ARAchivements;
-import zmaster587.advancedRocketry.api.AdvancedRocketryItems;
-import zmaster587.advancedRocketry.api.Configuration;
-import zmaster587.advancedRocketry.api.EntityRocketBase;
-import zmaster587.advancedRocketry.api.IInfrastructure;
-import zmaster587.advancedRocketry.api.RocketEvent;
+import zmaster587.advancedRocketry.api.*;
 import zmaster587.advancedRocketry.api.RocketEvent.RocketLaunchEvent;
 import zmaster587.advancedRocketry.api.RocketEvent.RocketPreLaunchEvent;
-import zmaster587.advancedRocketry.api.SatelliteRegistry;
-import zmaster587.advancedRocketry.api.StatsRocket;
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
-import zmaster587.advancedRocketry.api.fuel.FuelRegistry;
 import zmaster587.advancedRocketry.api.fuel.FuelRegistry.FuelType;
 import zmaster587.advancedRocketry.api.satellite.SatelliteBase;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
@@ -51,6 +37,8 @@ import zmaster587.advancedRocketry.atmosphere.AtmosphereHandler;
 import zmaster587.advancedRocketry.client.SoundRocketEngine;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
+import zmaster587.advancedRocketry.dimension.sim.AdvancedRocketryUniverse;
+import zmaster587.advancedRocketry.dimension.sim.SimUniverse;
 import zmaster587.advancedRocketry.event.PlanetEventHandler;
 import zmaster587.advancedRocketry.inventory.IPlanetDefiner;
 import zmaster587.advancedRocketry.inventory.TextureResources;
@@ -64,10 +52,10 @@ import zmaster587.advancedRocketry.mission.MissionOreMining;
 import zmaster587.advancedRocketry.network.PacketSatellite;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.thread.RocketStructureThread;
 import zmaster587.advancedRocketry.tile.TileGuidanceComputer;
 import zmaster587.advancedRocketry.tile.hatch.TileSatelliteHatch;
 import zmaster587.advancedRocketry.util.AsteroidSmall;
-import zmaster587.advancedRocketry.util.MobileAABB;
 import zmaster587.advancedRocketry.util.StationLandingLocation;
 import zmaster587.advancedRocketry.util.StorageChunk;
 import zmaster587.advancedRocketry.util.TransitionEntity;
@@ -78,25 +66,16 @@ import zmaster587.libVulpes.client.util.ProgressBarImage;
 import zmaster587.libVulpes.gui.CommonResources;
 import zmaster587.libVulpes.interfaces.INetworkEntity;
 import zmaster587.libVulpes.inventory.GuiHandler;
-import zmaster587.libVulpes.inventory.modules.IButtonInventory;
-import zmaster587.libVulpes.inventory.modules.IModularInventory;
-import zmaster587.libVulpes.inventory.modules.IProgressBar;
-import zmaster587.libVulpes.inventory.modules.ISelectionNotify;
-import zmaster587.libVulpes.inventory.modules.ModuleBase;
-import zmaster587.libVulpes.inventory.modules.ModuleButton;
-import zmaster587.libVulpes.inventory.modules.ModuleContainerPan;
-import zmaster587.libVulpes.inventory.modules.ModuleImage;
-import zmaster587.libVulpes.inventory.modules.ModuleProgress;
-import zmaster587.libVulpes.inventory.modules.ModuleSlotButton;
-import zmaster587.libVulpes.inventory.modules.ModuleText;
+import zmaster587.libVulpes.inventory.modules.*;
 import zmaster587.libVulpes.items.ItemLinker;
 import zmaster587.libVulpes.network.PacketEntity;
 import zmaster587.libVulpes.network.PacketHandler;
 import zmaster587.libVulpes.util.BlockPosition;
 import zmaster587.libVulpes.util.IconResource;
 import zmaster587.libVulpes.util.Vector3F;
-import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
+
+import java.lang.ref.WeakReference;
+import java.util.*;
 
 public class EntityRocket extends EntityRocketBase implements INetworkEntity, IDismountHandler, IModularInventory, IProgressBar, IButtonInventory, ISelectionNotify,IPlanetDefiner {
 
@@ -108,12 +87,15 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	private int lastDimensionFrom = 0;
 	
 	public StorageChunk storage;
+	private final ArrayList<LeveledRocketPart> leveledRocketParts = new ArrayList<LeveledRocketPart>();
+	private boolean structureAnalysisQueued;
 	private String errorStr;
 	private long lastErrorTime = Long.MIN_VALUE;
 	private static long ERROR_DISPLAY_TIME = 100;
 	private static int DESCENT_TIMER = 500;
 	private static int BUTTON_ID_OFFSET = 25;
 	private static final int STATION_LOC_OFFSET = 50;
+	private static final double FREE_SPACE_FLOOR = 0D;
 	private ModuleText landingPadDisplayText;
 	protected long lastWorldTickTicked;
 
@@ -160,10 +142,14 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		landingPadDisplayText = new ModuleText(256, 16, "", 0x00FF00, 2f);
 		landingPadDisplayText.setColor(0x00ff00);
 	}
-
 	public EntityRocket(World world, StorageChunk storage, StatsRocket stats, double x, double y, double z) {
 		this(world);
-		this.stats = stats;
+		if(storage==null){super.setDead();throw new IllegalArgumentException("null storage for Rocketry!");}
+		if(!world.isRemote && AdvancedRocketry.rocketStructureDivider != null) {
+			AdvancedRocketry.rocketStructureDivider.addATask(this.entityUniqueID, storage);
+			structureAnalysisQueued = true;
+		}
+	    this.stats = stats;
 		this.setPosition(x, y, z);
 		this.storage = storage;
 		this.storage.setEntity(this);
@@ -175,6 +161,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		landingPadDisplayText = new ModuleText(256, 16, "", 0x00FF00, 2f);
 		landingPadDisplayText.setColor(0x00ff00);
 	}
+
 
 	@Override
 	public AxisAlignedBB getBoundingBox() {
@@ -214,7 +201,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		infrastructureCoords.remove(new BlockPosition(((TileEntity)infrastructure).xCoord, ((TileEntity)infrastructure).yCoord, ((TileEntity)infrastructure).zCoord));
 
 		if(!worldObj.isRemote) {
-			int pos[] = {((TileEntity)infrastructure).xCoord, ((TileEntity)infrastructure).yCoord, ((TileEntity)infrastructure).zCoord};
+			int[] pos = {((TileEntity)infrastructure).xCoord, ((TileEntity)infrastructure).yCoord, ((TileEntity)infrastructure).zCoord};
 
 			NBTTagCompound nbt = new NBTTagCompound();
 			nbt.setIntArray("pos", pos);
@@ -317,7 +304,12 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		return true;
 	}
 
-
+	/**is Rocket in space, orbiting any planet or star.**/
+	public boolean isInTravel(){
+		return worldObj != null
+				&& worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+				&& isInFlight();
+	}
 	/**
 	 * If the rocket is in flight, ie the rocket has taken off and has not touched the ground
 	 * @return true if in flight
@@ -330,12 +322,12 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	}
 
 	/**
-	 * Sets the the status of flight of the rocket and updates the datawatcher
-	 * @param inflight status of flight
+	 * Sets the status of flight of the rocket and updates the datawatcher
+	 * @param inOrbit status of flight
 	 */
 	public void setInOrbit(boolean inOrbit) {
 		this.isInOrbit = inOrbit;
-		this.dataWatcher.updateObject(18, new Byte(isInOrbit ? (byte)1 : (byte)0));
+		this.dataWatcher.updateObject(18, isInOrbit ? (byte) 1 : (byte) 0);
 	}
 
 	/**
@@ -350,19 +342,19 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	}
 
 	/**
-	 * Sets the the status of flight of the rocket and updates the datawatcher
+	 * Sets the  status of flight of the rocket and updates the datawatcher
 	 * @param inflight status of flight
 	 */
 	public void setInFlight(boolean inflight) {
 		this.isInFlight = inflight;
-		this.dataWatcher.updateObject(16, new Byte(isInFlight ? (byte)1 : (byte)0));
+		this.dataWatcher.updateObject(16, isInFlight ? (byte) 1 : (byte) 0);
 	}
 
 	@Override
 	protected void entityInit() {
-		this.dataWatcher.addObject(16, new Byte(isInFlight ? (byte)1 : (byte)0));
-		this.dataWatcher.addObject(17, new Integer(0));
-		this.dataWatcher.addObject(18, new Byte(isInOrbit ? (byte)1 : (byte)0));
+		this.dataWatcher.addObject(16, isInFlight ? (byte) 1 : (byte) 0);
+		this.dataWatcher.addObject(17, 0);
+		this.dataWatcher.addObject(18, isInOrbit ? (byte) 1 : (byte) 0);
 	}
 
 	//Set the size and position of the rocket from storage
@@ -374,81 +366,27 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	}
 
 	protected boolean interact(EntityPlayer player) {
-		//Actual interact code needs to be moved to a packet receive on the server
-
 		ItemStack heldItem = player.getHeldItem();
 
-		//Handle linkers and right-click with fuel
-		if(heldItem != null) {
-			float fuelMult;
-			FluidStack fluidStack;
-
-			if(heldItem.getItem() instanceof ItemLinker) {
-				if(ItemLinker.isSet(heldItem)) {
-
-					TileEntity tile = this.worldObj.getTileEntity(ItemLinker.getMasterX(heldItem), ItemLinker.getMasterY(heldItem), ItemLinker.getMasterZ(heldItem));
-
-					if(tile instanceof IInfrastructure) {
-						IInfrastructure infrastructure = (IInfrastructure)tile;
-						if(this.getDistance(ItemLinker.getMasterX(heldItem), this.posY, ItemLinker.getMasterZ(heldItem)) < infrastructure.getMaxLinkDistance() + Math.max(storage.getSizeX(), storage.getSizeZ())) {
-							if(!connectedInfrastructure.contains(tile)) {
-
-								linkInfrastructure(infrastructure);
-								if(!worldObj.isRemote) {
-									player.addChatMessage(new ChatComponentText("Linked Sucessfully"));
-								}
-								ItemLinker.resetPosition(heldItem);
-
-								return true;
-							}
-							else if(!worldObj.isRemote)
-								player.addChatMessage(new ChatComponentText("Already linked!"));
-						}
-						else if(!worldObj.isRemote)
-							player.addChatMessage(new ChatComponentText("The object you are trying to link is too far away"));
-					}
-					else if(!worldObj.isRemote)
-						player.addChatMessage(new ChatComponentText("This cannot be linked to a rocket!"));
-				}
-				else if(!worldObj.isRemote)
-					player.addChatMessage(new ChatComponentText("Nothing to be linked"));
-				return false;
+		if(heldItem != null && heldItem.getItem() instanceof ItemLinker) {
+			if(!worldObj.isRemote) {
+				String error = onLinkerUsed(heldItem, player);
+				if(error != null)
+					player.addChatMessage(new ChatComponentTranslation(error));
 			}
-			else if((FluidContainerRegistry.isFilledContainer(heldItem) && (fuelMult = FuelRegistry.instance.getMultiplier(FuelType.LIQUID, (fluidStack = FluidContainerRegistry.getFluidForFilledItem(heldItem)).getFluid()) ) > 0 )
-					|| ( heldItem.getItem() instanceof IFluidContainerItem && ((IFluidContainerItem) heldItem.getItem()).getFluid(heldItem) != null && 
-					((IFluidContainerItem) heldItem.getItem()).getFluid(heldItem).amount >= FluidContainerRegistry.BUCKET_VOLUME
-					&& (fuelMult = FuelRegistry.instance.getMultiplier(FuelType.LIQUID, (fluidStack = ((IFluidContainerItem) heldItem.getItem()).getFluid(heldItem)).getFluid())) > 0 )) { 
-
-
-				int amountToAdd = (int) (fuelMult*fluidStack.amount);
-				this.addFuelAmount(amountToAdd);
-
-				//if the player is not in creative then try to use the fluid container
-				if(!player.capabilities.isCreativeMode) {
-					if(heldItem.getItem() instanceof IFluidContainerItem) {
-						((IFluidContainerItem) heldItem.getItem()).drain(heldItem, FluidContainerRegistry.BUCKET_VOLUME, true);
-					}
-					else {
-						ItemStack emptyStack = FluidContainerRegistry.drainFluidContainer(player.getHeldItem());
-
-						if(player.inventory.addItemStackToInventory(emptyStack)) {
-							player.getHeldItem().splitStack(1);
-							if(player.getHeldItem().stackSize == 0)
-								player.inventory.setInventorySlotContents(player.inventory.currentItem, null); 
-						}
-					}
-				}
-
-				return true;
-			}
+			return true;
 		}
 
-		//If player is holding shift open GUI
+		// Empty-hand interaction avoids consuming a held item's own action.
+		if(heldItem != null)
+			return true;
+
 		if(player.isSneaking()) {
-			openGui(player);
+			if(!worldObj.isRemote)
+				openGui(player);
 		}
 		else if(stats.hasSeat()) { //If pilot seat is open mount entity there
-			if(stats.hasSeat() && this.riddenByEntity == null) {
+			if(this.riddenByEntity == null) {
 				if(!worldObj.isRemote)
 					player.mountEntity(this);
 			}
@@ -463,6 +401,39 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			}*/
 		}
 		return true;
+	}
+
+	/**
+	 * Links a programmed infrastructure linker to this rocket.
+	 *
+	 * @return a translation key on failure, otherwise {@code null}
+	 */
+	public String onLinkerUsed(ItemStack heldItem, EntityPlayer player) {
+		if(!ItemLinker.isSet(heldItem))
+			return "msg.linker.empty";
+
+		TileEntity tile = worldObj.getTileEntity(
+				ItemLinker.getMasterX(heldItem),
+				ItemLinker.getMasterY(heldItem),
+				ItemLinker.getMasterZ(heldItem));
+		if(!(tile instanceof IInfrastructure))
+			return tile == null ? "msg.linker.error.invalid" : "msg.linker.error.incompatible";
+
+		IInfrastructure infrastructure = (IInfrastructure)tile;
+		double maxDistance = infrastructure.getMaxLinkDistance()
+				+ Math.max(storage.getSizeX(), storage.getSizeZ());
+		if(getDistance(ItemLinker.getMasterX(heldItem), posY, ItemLinker.getMasterZ(heldItem)) > maxDistance)
+			return "msg.linker.error.too_far";
+		if(connectedInfrastructure.contains(tile))
+			return "msg.linker.error.already";
+
+		linkInfrastructure(infrastructure);
+		player.addChatMessage(new ChatComponentTranslation("msg.linker.success"));
+		if(player.isSneaking()) {
+			ItemLinker.resetPosition(heldItem);
+			player.addChatMessage(new ChatComponentTranslation("msg.linker.reset"));
+		}
+		return null;
 	}
 
 
@@ -492,30 +463,54 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	}
 
 	public boolean isDescentPhase() {
-		return Configuration.automaticRetroRockets && isInOrbit() && this.posY < 300 && (this.motionY < -0.4f || worldObj.isRemote);
+		return worldObj.provider.dimensionId != Configuration.freeSpaceDimId
+				&& Configuration.automaticRetroRockets && isInOrbit()
+				&& this.posY < 300
+				&& (this.motionY < -0.4f || worldObj.isRemote);
 	}
 
 	public boolean areEnginesRunning() {
-		return (this.motionY > 0 || isDescentPhase() || (riddenByEntity != null && ((EntityPlayer)riddenByEntity).moveForward > 0));
+		return (worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+				&& motionX*motionX + motionY*motionY + motionZ*motionZ
+						> 0.000001D)
+				|| this.motionY > 0 || isDescentPhase();
 	}
 
 
 	@Override
 	public void onUpdate() {
+		if(worldObj != null
+				&& worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+				&& posY < FREE_SPACE_FLOOR) {
+			setPosition(posX, FREE_SPACE_FLOOR, posZ);
+			if(motionY < 0)
+				motionY = 0;
+			fallDistance = 0;
+			velocityChanged = true;
+		}
 		super.onUpdate();
-
+		RocketStructureThread divider = AdvancedRocketry.rocketStructureDivider;
+		if(!worldObj.isRemote && divider != null && storage != null
+				&& leveledRocketParts.isEmpty() && !structureAnalysisQueued) {
+			divider.addATask(entityUniqueID, storage);
+			structureAnalysisQueued = true;
+		}
+		if(!worldObj.isRemote && divider != null && leveledRocketParts.isEmpty()
+				&& divider.isTaskCompleted(entityUniqueID)) {
+			ArrayList<LeveledRocketPart> result =
+					divider.getResultAndRemove(entityUniqueID);
+			if(result != null)
+				leveledRocketParts.addAll(result);
+		}
 		long deltaTime = worldObj.getTotalWorldTime() - lastWorldTickTicked;
 		lastWorldTickTicked = worldObj.getTotalWorldTime();
 
 		if(this.ticksExisted == 20) {
 			//problems with loading on other world then where the infrastructure was set?
-			ListIterator<BlockPosition> itr = (new LinkedList<BlockPosition>(infrastructureCoords)).listIterator();
-			while(itr.hasNext()) {
-				BlockPosition temp = itr.next();
-
+			for (BlockPosition temp : new LinkedList<>(infrastructureCoords)) {
 				TileEntity tile = this.worldObj.getTileEntity(temp.x, temp.y, temp.z);
-				if(tile instanceof IInfrastructure) {
-					this.linkInfrastructure((IInfrastructure)tile);
+				if (tile instanceof IInfrastructure) {
+					this.linkInfrastructure((IInfrastructure) tile);
 				}
 			}
 		}
@@ -535,9 +530,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				//Deorbiting
 				MinecraftForge.EVENT_BUS.post(new RocketEvent.RocketDeOrbitingEvent(this));
 				PacketHandler.sendToNearby(new PacketEntity(this, (byte)PacketType.ROCKETLANDEVENT.ordinal()), worldObj.provider.dimensionId, (int)posX, (int)posY, (int)posZ, 64);
-
-				if(player instanceof EntityPlayer)
-					PacketHandler.sendToPlayer(new PacketEntity((INetworkEntity)this,(byte)PacketType.FORCEMOUNT.ordinal()), player);
+				PacketHandler.sendToPlayer(new PacketEntity((INetworkEntity)this,(byte)PacketType.FORCEMOUNT.ordinal()), player);
 			}
 		}
 
@@ -550,7 +543,16 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			if(burningFuel || descentPhase) {
 				//Burn the rocket fuel
 				if(!worldObj.isRemote && !descentPhase)
-					setFuelAmount((int) (getFuelAmount() - stats.getFuelRate(FuelType.LIQUID)*(Configuration.gravityAffectsFuel ? DimensionManager.getInstance().getDimensionProperties(worldObj.provider.dimensionId).getGravitationalMultiplier() : 1f)));
+					setFuelAmount((int)(getFuelAmount()
+							- stats.getFuelRate(FuelType.LIQUID)
+							*(Configuration.gravityAffectsFuel
+									&& worldObj.provider.dimensionId
+											!= Configuration.freeSpaceDimId
+									? DimensionManager.getInstance()
+											.getDimensionProperties(
+													worldObj.provider.dimensionId)
+											.getGravitationalMultiplier()
+									: 1F)));
 
 				//Spawn in the particle effects for the engines
 				if(worldObj.isRemote && Minecraft.getMinecraft().gameSettings.particleSetting < 2 && areEnginesRunning()) {
@@ -577,8 +579,18 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				player.fallDistance = 0;
 				this.fallDistance = 0;
 
-				//if the player holds the forward key then decelerate
-				if(isInOrbit() && (burningFuel || descentPhase)) {
+				if(worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+						&& burningFuel) {
+					double acceleration = player.moveForward/100D;
+					Vec3 look = player.getLook(1F);
+					this.motionX += look.xCoord*acceleration*deltaTime;
+					this.motionY += look.yCoord*acceleration*deltaTime;
+					this.motionZ += look.zCoord*acceleration*deltaTime;
+					clampSpaceVelocity();
+				}
+				// Outside free space, holding forward continues to control the
+				// established vertical retro-rocket behavior.
+				else if(isInOrbit() && (burningFuel || descentPhase)) {
 					float vel = descentPhase ? 1f : player.moveForward;
 					this.motionY -= this.motionY*vel/50f;
 				}
@@ -591,33 +603,44 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			}
 
 			if(!worldObj.isRemote) {
-				//If out of fuel or descending then accelerate downwards
-				if(isInOrbit() || !burningFuel) {
-					this.motionY = Math.min(this.motionY - 0.001, 1);
-				} else
-					//this.motionY = Math.min(this.motionY + 0.001, 1);
-					this.motionY += stats.getAcceleration() * deltaTime;
+				boolean inFreeSpace =
+						worldObj.provider.dimensionId == Configuration.freeSpaceDimId;
+				if(!inFreeSpace) {
+					//If out of fuel or descending then accelerate downwards
+					if(isInOrbit() || !burningFuel)
+						this.motionY = Math.min(this.motionY - 0.001, 1);
+					else
+						this.motionY += stats.getAcceleration()*deltaTime;
+				}
 
 
 				double lastPosY = this.posY;
 				double prevMotion = this.motionY;
-				this.moveEntity(0, prevMotion*deltaTime, 0);
+				double verticalDelta = clampFreeSpaceVerticalDelta(
+						prevMotion*deltaTime);
+				this.moveEntity(inFreeSpace ? this.motionX*deltaTime : 0,
+						verticalDelta,
+						inFreeSpace ? this.motionZ*deltaTime : 0);
 
 				//Check to see if it's landed
-				if((isInOrbit() || !burningFuel) && isInFlight() && lastPosY + prevMotion != this.posY && this.posY < 256) {
+				if(!inFreeSpace && (isInOrbit() || !burningFuel)
+						&& isInFlight()
+						&& lastPosY + prevMotion != this.posY
+						&& this.posY < 256) {
 					//Did  sending this packet cause problems?
 					PacketHandler.sendToPlayersTrackingEntity(new PacketEntity(this, (byte)PacketType.ROCKETLANDEVENT.ordinal()), this);
 					MinecraftForge.EVENT_BUS.post(new RocketEvent.RocketLandedEvent(this));
 					this.setInFlight(false);
 					this.setInOrbit(false);
 				}
-				if(!isInOrbit() && (this.posY > Configuration.orbit)) {
+				if(!inFreeSpace && !isInOrbit()
+						&& this.posY > Configuration.orbit) {
 					onOrbitReached();
 				}
 
 
 				//If the rocket falls out of the world while in orbit either fall back to earth or die
-				if(this.posY < 0) {
+				if(!inFreeSpace && this.posY < 0) {
 					int dimId = worldObj.provider.dimensionId;
 
 					if(dimId == Configuration.spaceDimId) {
@@ -651,9 +674,39 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 						this.setDead();
 				}
 			}
-			else
-				this.moveEntity(0, this.motionY, 0);
+			else {
+				double verticalDelta =
+						clampFreeSpaceVerticalDelta(this.motionY);
+				this.moveEntity(
+						worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+								? this.motionX : 0,
+						verticalDelta,
+						worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+								? this.motionZ : 0);
+			}
 		}
+	}
+
+	private double clampFreeSpaceVerticalDelta(double proposedDelta) {
+		if(worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+				&& posY + proposedDelta < FREE_SPACE_FLOOR) {
+			motionY = 0;
+			velocityChanged = true;
+			return FREE_SPACE_FLOOR - posY;
+		}
+		return proposedDelta;
+	}
+
+	private void clampSpaceVelocity() {
+		double speedSquared = motionX*motionX + motionY*motionY + motionZ*motionZ;
+		double maximum = Math.max(0.05D, Configuration.maxSpaceRocketSpeed);
+		if(speedSquared > maximum*maximum) {
+			double scale = maximum/Math.sqrt(speedSquared);
+			motionX *= scale;
+			motionY *= scale;
+			motionZ *= scale;
+		}
+		velocityChanged = true;
 	}
 
 
@@ -661,13 +714,23 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	 * @return a list of satellites stores in this rocket
 	 */
 	public List<SatelliteBase> getSatellites() {	
-		List<SatelliteBase> satellites = new ArrayList<SatelliteBase>();
+		List<SatelliteBase> satellites = new ArrayList<>();
 		for(TileSatelliteHatch tile : storage.getSatelliteHatches()) {
 			SatelliteBase satellite = tile.getSatellite();
 			if(satellite != null)
 				satellites.add(satellite);
 		}
 		return satellites;
+	}
+
+	/**
+	 * Returns a snapshot of the structure-analysis stages.  These entries are
+	 * descriptive only; physical separation and stage ignition are not yet
+	 * implemented.
+	 */
+	public List<LeveledRocketPart> getLeveledRocketParts() {
+		return Collections.unmodifiableList(
+				new ArrayList<LeveledRocketPart>(leveledRocketParts));
 	}
 
 	/**
@@ -732,7 +795,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			destinationDimId = storage.getDestinationDimId(this.worldObj.provider.dimensionId, (int)this.posX, (int)this.posZ);
 			if(destinationDimId == this.worldObj.provider.dimensionId) {
 				Vector3F<Float> pos = storage.getDestinationCoordinates(destinationDimId, true);
-				storage.setDestinationCoordinates(new Vector3F<Float>((float)this.posX, (float)this.posY, (float)this.posZ), this.worldObj.provider.dimensionId);
+				storage.setDestinationCoordinates(new Vector3F<>((float) this.posX, (float) this.posY, (float) this.posZ), this.worldObj.provider.dimensionId);
 				if(pos != null) {
 					this.setInOrbit(true);
 					this.motionY = -this.motionY;
@@ -746,14 +809,12 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					
 					this.setPosition(pos.x, Configuration.orbit, pos.z);
 
-					return;
 				}
 				else {
 
 					//Make player confirm deorbit if a player is riding the rocket
 					if(this.riddenByEntity != null) {
 						setInFlight(false);
-						pos.y = (float) Configuration.orbit;
 
 					}
 					this.setInOrbit(true);
@@ -767,32 +828,28 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					}
 					
 					this.setPosition(this.posX, Configuration.orbit, this.posZ);
-					return;
 				}
 				
 			}
 			else if(DimensionManager.getInstance().canTravelTo(destinationDimId)) {
 				Vector3F<Float> pos = storage.getDestinationCoordinates(destinationDimId, true);
-				storage.setDestinationCoordinates(new Vector3F<Float>((float)this.posX, (float)this.posY, (float)this.posZ), this.worldObj.provider.dimensionId);
+				storage.setDestinationCoordinates(new Vector3F<>((float) this.posX, (float) this.posY, (float) this.posZ), this.worldObj.provider.dimensionId);
 				if(pos != null) {
 					this.setInOrbit(true);
 					this.motionY = -this.motionY;
 					this.travelToDimension(destinationDimId, pos.x, Configuration.orbit, pos.z);
-					return;
 				}
 				else {
 
 					//Make player confirm deorbit if a player is riding the rocket
 					if(this.riddenByEntity != null) {
 						setInFlight(false);
-						pos.y = (float) Configuration.orbit;
 
 					}
 					this.setInOrbit(true);
 					this.motionY = -this.motionY;
 					
 					this.travelToDimension(destinationDimId, this.posX, Configuration.orbit, this.posZ);
-					return;
 				}
 			}
 			else {
@@ -820,13 +877,44 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			unpackSatellites();
 
 			//TODO: maybe add orbit dimension
-			this.motionY = -this.motionY;
 			setInOrbit(true);
+			TileGuidanceComputer guidanceComputer = storage.getGuidanceComputer();
+			if(worldObj.provider.dimensionId != Configuration.freeSpaceDimId
+					&& riddenByEntity instanceof EntityPlayer
+					&& guidanceComputer != null
+					&& guidanceComputer.isManualSpaceFlightTask()) {
+				DimensionProperties sourceProperties = DimensionManager.getEffectiveDimId(
+						worldObj, (int)posX, (int)posZ);
+				SimUniverse.SimBody sourceBody = sourceProperties == null
+						? null
+						: SimUniverse.getInstance().getBody(
+								AdvancedRocketryUniverse.planetId(
+										sourceProperties.getId()));
+				if(sourceBody != null) {
+					storage.setDestinationCoordinates(new Vector3F<Float>(
+							(float)posX, (float)posY, (float)posZ),
+							worldObj.provider.dimensionId);
+					motionX = motionY = motionZ = 0;
+					setInFlight(true);
+					double clearance = Math.max(8D,
+							sourceBody.getConfig().getSize()*4D + 4D);
+					travelToDimension(Configuration.freeSpaceDimId,
+							sourceBody.x, sourceBody.y + clearance, sourceBody.z);
+					return;
+				}
+				AdvancedRocketry.logger.warn("Cannot enter free space: simulated body for dimension "
+						+ (sourceProperties == null
+								? worldObj.provider.dimensionId
+								: sourceProperties.getId())
+						+ " is unavailable; using direct travel");
+			}
+
+			this.motionY = -this.motionY;
 			//If going to a station or something make sure to set coords accordingly
 			//If in space land on the planet, if on the planet go to space
 			if((destinationDimId == Configuration.spaceDimId || this.worldObj.provider.dimensionId == Configuration.spaceDimId) && this.worldObj.provider.dimensionId != destinationDimId) {
 				Vector3F<Float> pos = storage.getDestinationCoordinates(destinationDimId, true);
-				storage.setDestinationCoordinates(new Vector3F<Float>((float)this.posX, (float)this.posY, (float)this.posZ), this.worldObj.provider.dimensionId);
+				storage.setDestinationCoordinates(new Vector3F<>((float) this.posX, (float) this.posY, (float) this.posZ), this.worldObj.provider.dimensionId);
 				if(pos != null) {
 
 					//Make player confirm deorbit if a player is riding the rocket
@@ -844,7 +932,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			//if coordinates are overridden, make sure we grab them
 			Vector3F<Float> destPos = storage.getDestinationCoordinates(destinationDimId, true);
 			if(destPos == null)
-				destPos = new Vector3F<Float>((float)posX, (float)Configuration.orbit, (float)posZ);
+				destPos = new Vector3F<>((float) posX, (float) Configuration.orbit, (float) posZ);
 			
 			if(this.riddenByEntity != null) {
 				//Make player confirm deorbit if a player is riding the rocket
@@ -895,7 +983,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				ItemStack stack = tile.getStackInSlot(0);
 				if(stack != null && stack.getItem() == AdvancedRocketryItems.itemSpaceStation) {
 					StorageChunk storage = ((ItemPackedStructure)stack.getItem()).getStructure(stack);
-					ISpaceObject object = SpaceObjectManager.getSpaceManager().getSpaceStation((int)stack.getItemDamage());
+					ISpaceObject object = SpaceObjectManager.getSpaceManager().getSpaceStation(stack.getItemDamage());
 					
 					//in case of no NBT data or the like
 					if(object == null) {
@@ -955,7 +1043,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		destinationDimId = storage.getDestinationDimId(worldObj.provider.dimensionId, (int)this.posX, (int)this.posZ);
 
 		//TODO: make sure this doesn't break asteroid mining
-		if(!(DimensionManager.getInstance().canTravelTo(destinationDimId) || (destinationDimId == -1 && storage.getSatelliteHatches().size() != 0))) {
+		if(!(DimensionManager.getInstance().canTravelTo(destinationDimId) || (destinationDimId == -1 && !storage.getSatelliteHatches().isEmpty()))) {
 			setError(LibVulpes.proxy.getLocalizedString("error.rocket.cannotGetThere"));
 			return;
 		}
@@ -1029,6 +1117,9 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 	@Override
 	public void setDead() {
+		if(worldObj != null && !worldObj.isRemote
+				&& AdvancedRocketry.rocketStructureDivider != null)
+			AdvancedRocketry.rocketStructureDivider.cancelTask(entityUniqueID);
 		super.setDead();
 
 		//unlink any connected tiles
@@ -1050,7 +1141,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		super.onChunkLoad();
 
 		//problems with loading on other world then where the infrastructure was set?
-		ListIterator<BlockPosition> itr = new LinkedList<BlockPosition>(infrastructureCoords).listIterator();
+		ListIterator<BlockPosition> itr = new LinkedList<>(infrastructureCoords).listIterator();
 		while(itr.hasNext()) {
 			BlockPosition temp = itr.next();
 
@@ -1065,7 +1156,7 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	public void setOverriddenCoords(int dimId, float x, float y, float z) {
 		TileGuidanceComputer tile = storage.getGuidanceComputer();
 		if(tile != null) {
-			tile.setFallbackDestination(dimId, new Vector3F<Float>(x, y, z));
+			tile.setFallbackDestination(dimId, new Vector3F<>(x, y, z));
 		}
 	}
 
@@ -1144,6 +1235,33 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		}
 	}
 
+	/**
+	 * Called by the server-side universe collision pass when a manually flown
+	 * rocket reaches a landable simulated body.
+	 */
+	public void landOnSimulatedBody(int dimensionId) {
+		if(worldObj.isRemote || isDead
+				|| worldObj.provider.dimensionId != Configuration.freeSpaceDimId
+				|| !DimensionManager.getInstance().canTravelTo(dimensionId))
+			return;
+
+		Vector3F<Float> destination =
+				storage.getDestinationCoordinates(dimensionId, true);
+		if(destination == null) {
+			destination = new Vector3F<Float>(
+					(float)(worldObj.rand.nextInt(1025) - 512),
+					(float)Configuration.orbit,
+					(float)(worldObj.rand.nextInt(1025) - 512));
+		}
+
+		destinationDimId = dimensionId;
+		motionX = motionY = motionZ = 0;
+		setInOrbit(true);
+		setInFlight(false);
+		travelToDimension(dimensionId, destination.x,
+				Configuration.orbit, destination.z);
+	}
+
 	protected void readNetworkableNBT(NBTTagCompound nbt) {
 		//Normal function checks for the existance of the data anyway
 		readEntityFromNBT(nbt);
@@ -1171,11 +1289,22 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			storage.setEntity(this);
 			this.setSize(Math.max(storage.getSizeX(), storage.getSizeZ()), storage.getSizeY());
 		}
-
+		leveledRocketParts.clear();
+		structureAnalysisQueued = false;
+		if(nbt.hasKey("multistageParts")) {
+			NBTTagList parts = nbt.getTagList("multistageParts", 10);
+			for(int i = 0; i < parts.tagCount(); i++)
+				leveledRocketParts.add(LeveledRocketPart.readFromNBT(parts.getCompoundTagAt(i)));
+		}
+		else {
+			// Compatibility with the short-lived legacy development format.
+			for(int i = 0; nbt.hasKey("part." + i); i++)
+				leveledRocketParts.add(LeveledRocketPart.readFromNBT(nbt.getCompoundTag("part." + i)));
+		}
 		if(nbt.hasKey("infrastructure")) {
 			NBTTagList tagList = nbt.getTagList("infrastructure", 10);
 			for (int i = 0; i < tagList.tagCount(); i++) {
-				int coords[] = tagList.getCompoundTagAt(i).getIntArray("loc");
+				int[] coords = tagList.getCompoundTagAt(i).getIntArray("loc");
 				infrastructureCoords.add(new BlockPosition(coords[0], coords[1], coords[2]));
 			}
 		}
@@ -1185,7 +1314,12 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		//Satallite
 		if(nbt.hasKey("satallite")) {
 			NBTTagCompound satalliteNbt = nbt.getCompoundTag("satallite");
-			satallite = SatelliteRegistry.createFromNBT(satalliteNbt);
+			SatelliteBase loadedSatellite =
+					SatelliteRegistry.createFromNBT(satalliteNbt);
+			if(loadedSatellite != null)
+				satallite = loadedSatellite;
+			else
+				AdvancedRocketry.logger.warn("Ignoring rocket satellite data with an unknown type");
 		}
 	}
 
@@ -1237,7 +1371,10 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			storage.writeToNBT(blocks);
 			nbt.setTag("data", blocks);
 		}
-		
+		NBTTagList parts = new NBTTagList();
+		for(LeveledRocketPart part : leveledRocketParts)
+			parts.appendTag(part.writeToNBT());
+		nbt.setTag("multistageParts", parts);
 		nbt.setInteger("lastDimensionFrom", lastDimensionFrom);
 
 		//TODO handle non tile Infrastructure
@@ -1409,10 +1546,13 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 		for(int i = 0; i < this.stats.getNumPassengerSeats(); i++) {
 			BlockPosition pos = this.stats.getPassengerSeat(i);
-			if(mountedEntities[i] != null && mountedEntities[i].get() != null) {
-				mountedEntities[i].get().setPosition(this.posX + pos.x, this.posY + pos.y, this.posZ + pos.z); 
-				System.out.println("Additional: " + mountedEntities[i].get());
-			}
+			Entity passenger = mountedEntities[i] == null
+					? null : mountedEntities[i].get();
+			if(passenger != null)
+				passenger.setPosition(
+						this.posX + pos.x,
+						this.posY + pos.y,
+						this.posZ + pos.z);
 		}
 	}
 
@@ -1572,11 +1712,15 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 	@Override
 	public void handleDismount(Entity entity) {
+		if(worldObj.provider.dimensionId == Configuration.freeSpaceDimId
+				&& entity == riddenByEntity)
+			return;
 
 		//Attempt to dismount passengers first, else dismount pilot
 		for(int i = 0; i < mountedEntities.length; i++) {
 
-			if(mountedEntities[i] != null && mountedEntities[i].equals(entity)) {
+			if(mountedEntities[i] != null
+					&& mountedEntities[i].get() == entity) {
 				mountedEntities[i] = null;
 				break;
 			}

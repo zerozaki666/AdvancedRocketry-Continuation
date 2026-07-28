@@ -1,5 +1,6 @@
 package zmaster587.advancedRocketry.integration.nei;
 
+import net.minecraft.client.resources.I18n;
 import org.lwjgl.opengl.GL11;
 
 import codechicken.lib.gui.GuiDraw;
@@ -10,7 +11,7 @@ import zmaster587.libVulpes.client.util.ProgressBarImage;
 public class PlatePresserNEI  extends TemplateNEI {
 	@Override
 	public String getRecipeName() {
-		return "Small Plate Presser";
+		return I18n.format("gui.nei.PlatePresser");
 	}
 	
     

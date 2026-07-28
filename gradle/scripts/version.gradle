@@ -1,4 +1,4 @@
-version = "${project.minecraft.version}-${version_major}.${version_minor}.${version_revis}" + project.getBuildNumber()
+version = "${project.minecraft.version}-${version_major}.${version_minor}.${version_revis}${version_qualifier}" + project.getBuildNumber()
 
 //prints the version to the console
 println "version = "+ version

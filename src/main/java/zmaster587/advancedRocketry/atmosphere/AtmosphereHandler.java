@@ -296,7 +296,7 @@ public class AtmosphereHandler {
 		if(Configuration.enableOxygen) {
 			BlockPosition pos = new BlockPosition(x,y,z);
 			for(AreaBlob blob : blobs.values()) {
-				if(blob.contains(pos)) {
+				if(blob.contains(pos) && blob.getData() instanceof IAtmosphere) {
 					return (IAtmosphere)blob.getData();
 				}
 			}
@@ -317,7 +317,7 @@ public class AtmosphereHandler {
 		if(Configuration.enableOxygen) {
 			BlockPosition pos = new BlockPosition((int)Math.floor(entity.posX), (int)Math.ceil(entity.posY), (int)Math.floor(entity.posZ ));
 			for(AreaBlob blob : blobs.values()) {
-				if(blob.contains(pos)) {
+				if(blob.contains(pos) && blob.getData() instanceof IAtmosphere) {
 					return (IAtmosphere)blob.getData();
 				}
 			}
@@ -360,7 +360,8 @@ public class AtmosphereHandler {
 		if(Configuration.enableOxygen) {
 			BlockPosition pos = new BlockPosition((int)Math.floor(entity.posX), (int)Math.ceil(entity.posY), (int)Math.floor(entity.posZ));
 			for(AreaBlob blob : blobs.values()) {
-				if(blob.contains(pos) && ((IAtmosphere)blob.getData()).isImmune(entity)) {
+				if(blob.contains(pos) && blob.getData() instanceof IAtmosphere
+						&& ((IAtmosphere)blob.getData()).isImmune(entity)) {
 					return true;
 				}
 			}

@@ -42,6 +42,10 @@ public class CommonProxy {
 
 	}
 
+	public boolean isIntegratedServerRunning() {
+		return false;
+	}
+
 	public void fireFogBurst(ISpaceObject station) {
 		PacketHandler.sendToNearby(new PacketStationUpdate(station, PacketStationUpdate.Type.SIGNAL_WHITE_BURST), Configuration.spaceDimId, station.getSpawnLocation().x, 128, station.getSpawnLocation().z, Configuration.stationSize);
 	}

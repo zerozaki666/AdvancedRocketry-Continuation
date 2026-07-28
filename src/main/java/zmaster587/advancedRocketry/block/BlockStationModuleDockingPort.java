@@ -10,7 +10,6 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
 import zmaster587.advancedRocketry.tile.station.TileDockingPort;
-import zmaster587.advancedRocketry.tile.station.TileLandingPad;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.block.BlockFullyRotatable;
 import zmaster587.libVulpes.inventory.GuiHandler;
@@ -66,7 +65,7 @@ public class BlockStationModuleDockingPort extends BlockFullyRotatable {
 				oldMeta);
 		
 		TileEntity tile = world.getTileEntity(x, y, z);
-		if(tile instanceof TileLandingPad) {
+		if(tile instanceof TileDockingPort) {
 			((TileDockingPort) tile).unregisterTileWithStation(world, x, y, z);
 		}
 	}

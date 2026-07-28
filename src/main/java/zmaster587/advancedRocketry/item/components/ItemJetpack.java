@@ -246,6 +246,8 @@ public class ItemJetpack extends Item implements IArmorComponent, IJetPack {
 
 	@Override
 	public void changeMode(ItemStack stack, IInventory modules, EntityPlayer player) {
+		if(stack == null)
+			return;
 		NBTTagCompound nbt;
 		int mode = 0;
 

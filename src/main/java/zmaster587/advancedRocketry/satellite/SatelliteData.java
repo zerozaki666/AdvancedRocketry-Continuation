@@ -35,7 +35,11 @@ public abstract class SatelliteData extends SatelliteBase {
 
 	@Override
 	public boolean acceptsItemInConstruction(ItemStack item) {
-		int flag = SatelliteRegistry.getSatelliteProperty(item).getPropertyFlag();
+		SatelliteProperties properties =
+				SatelliteRegistry.getSatelliteProperty(item);
+		if(properties == null)
+			return false;
+		int flag = properties.getPropertyFlag();
 		
 		return super.acceptsItemInConstruction(item) || SatelliteProperties.Property.DATA.isOfType(flag) || SatelliteProperties.Property.POWER_GEN.isOfType(flag);
 	}

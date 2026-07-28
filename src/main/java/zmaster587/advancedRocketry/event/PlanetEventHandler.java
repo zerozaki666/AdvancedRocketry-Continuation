@@ -1,20 +1,19 @@
 package zmaster587.advancedRocketry.event;
 
-import java.lang.ref.WeakReference;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-
-import org.lwjgl.opengl.GL11;
-
+import cpw.mods.fml.common.Mod.EventHandler;
+import cpw.mods.fml.common.eventhandler.Event.Result;
+import cpw.mods.fml.common.eventhandler.SubscribeEvent;
+import cpw.mods.fml.common.gameevent.PlayerEvent;
+import cpw.mods.fml.common.gameevent.TickEvent;
+import cpw.mods.fml.common.network.FMLNetworkEvent;
+import cpw.mods.fml.common.network.FMLNetworkEvent.ClientDisconnectionFromServerEvent;
+import cpw.mods.fml.relauncher.Side;
+import cpw.mods.fml.relauncher.SideOnly;
 import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ActiveRenderInfo;
+import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayer.EnumStatus;
 import net.minecraft.entity.player.EntityPlayerMP;
@@ -22,27 +21,28 @@ import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.ChunkCoordinates;
 import net.minecraft.util.Vec3;
 import net.minecraft.world.World;
-import net.minecraft.world.WorldProvider;
 import net.minecraft.world.WorldServer;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraftforge.common.util.ForgeDirection;
+import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent;
 import net.minecraftforge.event.entity.living.LivingFallEvent;
+import net.minecraftforge.event.entity.living.LivingSpawnEvent.CheckSpawn;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
-import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent.Action;
 import net.minecraftforge.event.entity.player.PlayerOpenContainerEvent;
+import net.minecraftforge.event.entity.player.PlayerSleepInBedEvent;
 import net.minecraftforge.event.terraingen.OreGenEvent;
 import net.minecraftforge.event.terraingen.PopulateChunkEvent;
 import net.minecraftforge.event.world.ChunkEvent;
 import net.minecraftforge.event.world.WorldEvent;
-import zmaster587.advancedRocketry.achievements.ARAchivements;
-import zmaster587.advancedRocketry.api.AdvancedRocketryBiomes;
+import org.lwjgl.opengl.GL11;
 import zmaster587.advancedRocketry.AdvancedRocketry;
+import zmaster587.advancedRocketry.achievements.ARAchivements;
 import zmaster587.advancedRocketry.api.AdvancedRocketryBlocks;
 import zmaster587.advancedRocketry.api.AdvancedRocketryItems;
 import zmaster587.advancedRocketry.api.Configuration;
@@ -60,28 +60,30 @@ import zmaster587.advancedRocketry.network.PacketStellarInfo;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
 import zmaster587.advancedRocketry.util.AsteroidSmall;
 import zmaster587.advancedRocketry.util.BiomeHandler;
+import zmaster587.advancedRocketry.util.SpawnListEntryNBT;
 import zmaster587.advancedRocketry.util.TransitionEntity;
 import zmaster587.advancedRocketry.world.provider.WorldProviderPlanet;
 import zmaster587.advancedRocketry.world.util.TeleporterNoPortal;
-import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.api.IModularArmor;
 import zmaster587.libVulpes.api.LibVulpesItems;
+import zmaster587.libVulpes.api.material.MaterialRegistry;
 import zmaster587.libVulpes.network.PacketHandler;
-import cpw.mods.fml.common.Mod.EventHandler;
-import cpw.mods.fml.common.eventhandler.SubscribeEvent;
-import cpw.mods.fml.common.eventhandler.Event.Result;
-import cpw.mods.fml.common.gameevent.PlayerEvent;
-import cpw.mods.fml.common.gameevent.PlayerEvent.PlayerRespawnEvent;
-import cpw.mods.fml.common.gameevent.TickEvent;
-import cpw.mods.fml.common.network.FMLNetworkEvent;
-import cpw.mods.fml.common.network.FMLNetworkEvent.ClientConnectedToServerEvent;
-import cpw.mods.fml.common.network.FMLNetworkEvent.ClientDisconnectionFromServerEvent;
-import cpw.mods.fml.relauncher.Side;
-import cpw.mods.fml.relauncher.SideOnly;
+
+import java.lang.ref.WeakReference;
+import java.util.*;
+import java.util.Map.Entry;
 
 public class PlanetEventHandler {
 
 	public static long time = 0;
+	private static final String PENDING_SPAWN_NBT =
+			"advancedRocketryPendingSpawnNbt";
+	private static final String SPAWN_NBT_APPLIED =
+			"advancedRocketrySpawnNbtApplied";
+	private static final Set<String> PROTECTED_SPAWN_NBT_KEYS =
+			new HashSet<String>(Arrays.asList(
+					"id", "UUIDMost", "UUIDLeast", "Pos", "Motion",
+					"Rotation", "Dimension", "Riding", "ForgeData"));
 	private static long endTime, duration;
 	private static Map<Long,TransitionEntity> transitionMap = new HashMap<Long,TransitionEntity>();
 
@@ -151,10 +153,94 @@ public class PlanetEventHandler {
 		if(event.pickedUp != null) {
 			Item item = event.pickedUp.getEntityItem().getItem();
 
-			zmaster587.libVulpes.api.material.Material mat = LibVulpes.materialRegistry.getMaterialFromItemStack( event.pickedUp.getEntityItem());
+			zmaster587.libVulpes.api.material.Material mat = MaterialRegistry.getMaterialFromItemStack( event.pickedUp.getEntityItem());
 			if(mat != null && mat.getUnlocalizedName().contains("Dilithium"))
 				event.player.triggerAchievement(ARAchivements.dilithiumCrystals);
 		}
+	}
+
+	@SubscribeEvent
+	public void SpawnEntity(WorldEvent.PotentialSpawns event) {
+		World world = event.world;
+		if(!(world.provider instanceof WorldProviderPlanet))
+			return;
+
+		DimensionProperties properties = DimensionManager.getInstance().getDimensionProperties(world.provider.dimensionId);
+		if(properties == null)
+			return;
+
+		List<SpawnListEntryNBT> matchingEntries =
+				new ArrayList<SpawnListEntryNBT>();
+		for(SpawnListEntryNBT entry : properties.getSpawnListEntries()) {
+			if(event.type.getCreatureClass().isAssignableFrom(entry.entityClass))
+				matchingEntries.add(entry);
+		}
+		if(matchingEntries.isEmpty())
+			return;
+
+		event.list.clear();
+		event.list.addAll(matchingEntries);
+	}
+
+	@SubscribeEvent
+	public void markConfiguredNaturalSpawn(CheckSpawn event) {
+		if(event.world.isRemote
+				|| !(event.world.provider instanceof WorldProviderPlanet))
+			return;
+
+		DimensionProperties properties = DimensionManager.getInstance()
+				.getDimensionProperties(event.world.provider.dimensionId);
+		if(properties == null)
+			return;
+
+		List<SpawnListEntryNBT> matching =
+				new ArrayList<SpawnListEntryNBT>();
+		long totalWeight = 0;
+		for(SpawnListEntryNBT entry : properties.getSpawnListEntries()) {
+			if(entry.entityClass == event.entityLiving.getClass()) {
+				matching.add(entry);
+				totalWeight += Math.max(1, entry.itemWeight);
+			}
+		}
+		if(matching.isEmpty() || totalWeight <= 0)
+			return;
+
+		double selection = event.world.rand.nextDouble()*totalWeight;
+		SpawnListEntryNBT selected = matching.get(matching.size() - 1);
+		for(SpawnListEntryNBT entry : matching) {
+			selection -= Math.max(1, entry.itemWeight);
+			if(selection < 0) {
+				selected = entry;
+				break;
+			}
+		}
+
+		NBTTagCompound configuredNbt = selected.getNbt();
+		if(configuredNbt != null)
+			event.entityLiving.getEntityData().setTag(
+					PENDING_SPAWN_NBT, configuredNbt);
+	}
+
+	@SubscribeEvent
+	public void applyConfiguredSpawnNbt(EntityJoinWorldEvent event) {
+		if(event.world.isRemote || !(event.entity instanceof EntityLiving)
+				|| event.entity.getEntityData().getBoolean(SPAWN_NBT_APPLIED)
+				|| !event.entity.getEntityData().hasKey(
+						PENDING_SPAWN_NBT, 10))
+			return;
+
+		NBTTagCompound configuredNbt = event.entity.getEntityData()
+				.getCompoundTag(PENDING_SPAWN_NBT);
+		NBTTagCompound entityNbt = new NBTTagCompound();
+		event.entity.writeToNBT(entityNbt);
+		for(Object keyObject : configuredNbt.func_150296_c()) {
+			String key = (String)keyObject;
+			if(!PROTECTED_SPAWN_NBT_KEYS.contains(key))
+				entityNbt.setTag(key, configuredNbt.getTag(key).copy());
+		}
+		event.entity.readFromNBT(entityNbt);
+		event.entity.getEntityData().removeTag(PENDING_SPAWN_NBT);
+		event.entity.getEntityData().setBoolean(SPAWN_NBT_APPLIED, true);
 	}
 
 	//Handle gravity

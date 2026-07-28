@@ -707,7 +707,8 @@ public class SpaceObject implements ISpaceObject, IPlanetDefiner {
 			StationLandingLocation loc = new StationLandingLocation(pos, tag.getString("name"));
 			spawnLocations.add(loc);
 			loc.setOccupied(tag.getBoolean("occupied"));
-			loc.setAllowedForAutoLand( tag.hasKey("occupied") ? tag.getBoolean("occupied") : true);
+			loc.setAllowedForAutoLand(tag.hasKey("autoLand")
+					? tag.getBoolean("autoLand") : true);
 		}
 
 		list = nbt.getTagList("warpCorePositions", NBT.TAG_COMPOUND);

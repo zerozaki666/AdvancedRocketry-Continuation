@@ -19,7 +19,10 @@ public class Configuration {
 	
 	public static int orbit = 1000;
 	public static int MoonId = -1;
+	/** Shared dimension containing all player-built space stations. */
 	public static int spaceDimId = -2;
+	/** Empty dimension used for controlled interplanetary flight. */
+	public static int freeSpaceDimId = -3;
 	public static int fuelPointsPer10Mb = 10;
 	public static int stationSize = 1024;
 	
@@ -139,6 +142,8 @@ public class Configuration {
 	public static boolean skyOverride;
 	public static boolean planetSkyOverride;
 	public static boolean stationSkyOverride;
+	public static boolean spaceSkyOverride;
+	public static double maxSpaceRocketSpeed;
 
 	public static boolean allowTerraformNonAR;
 	public static boolean forcePlayerRespawnInSpace;

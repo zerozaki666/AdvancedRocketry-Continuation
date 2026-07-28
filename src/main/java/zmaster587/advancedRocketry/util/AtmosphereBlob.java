@@ -171,23 +171,26 @@ public class AtmosphereBlob extends AreaBlob implements Runnable {
 	 * @param blocks Collection containing affected locations
 	 */
 	protected void runEffectOnWorldBlocks(World world, Collection<BlockPosition> blocks) {
-		if(!AtmosphereHandler.getOxygenHandler(world.provider.dimensionId).getDefaultAtmosphereType().allowsCombustion()) {
-			List<BlockPosition> list;
+		AtmosphereHandler handler =
+				AtmosphereHandler.getOxygenHandler(world.provider.dimensionId);
+		if(handler == null || handler.getDefaultAtmosphereType().allowsCombustion())
+			return;
 
-			synchronized (graph) {
-				list = new LinkedList<BlockPosition>(blocks);
+		List<BlockPosition> list;
+
+		synchronized (graph) {
+			list = new LinkedList<BlockPosition>(blocks);
+		}
+
+		for(BlockPosition pos : list) {
+			Block block = world.getBlock(pos.x, pos.y, pos.z);
+			if(block== Blocks.torch) {
+				world.setBlock(pos.x, pos.y, pos.z, AdvancedRocketryBlocks.blockUnlitTorch);
 			}
-
-			for(BlockPosition pos : list) {
-				Block block = world.getBlock(pos.x, pos.y, pos.z);
-				if(block== Blocks.torch) {
-					world.setBlock(pos.x, pos.y, pos.z, AdvancedRocketryBlocks.blockUnlitTorch);
-				}
-				else if(Configuration.torchBlocks.contains(block)) {
-					EntityItem item = new EntityItem(world, pos.x, pos.y, pos.z, new ItemStack(block));
-					world.setBlockToAir(pos.x, pos.y, pos.z);
-					world.spawnEntityInWorld(item);
-				}
+			else if(Configuration.torchBlocks.contains(block)) {
+				EntityItem item = new EntityItem(world, pos.x, pos.y, pos.z, new ItemStack(block));
+				world.setBlockToAir(pos.x, pos.y, pos.z);
+				world.spawnEntityInWorld(item);
 			}
 		}
 	}

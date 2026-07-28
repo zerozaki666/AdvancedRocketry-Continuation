@@ -2,8 +2,10 @@ package zmaster587.advancedRocketry.network;
 
 import java.io.IOException;
 
+import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.SatelliteRegistry;
 import zmaster587.advancedRocketry.api.satellite.SatelliteBase;
+import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.libVulpes.network.BasePacket;
 import zmaster587.libVulpes.util.INetworkMachine;
 import cpw.mods.fml.relauncher.Side;
@@ -16,7 +18,6 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.world.World;
-import net.minecraftforge.common.DimensionManager;
 
 public class PacketSatellite extends BasePacket {
 
@@ -59,9 +60,24 @@ public class PacketSatellite extends BasePacket {
 		//TODO: error handling
 		try {
 			nbt = packetBuffer.readNBTTagCompoundFromBuffer();
+			if(nbt == null) {
+				AdvancedRocketry.logger.warn("Received an empty satellite packet");
+				return;
+			}
 			SatelliteBase satellite = SatelliteRegistry.createFromNBT(nbt);
-			
-			zmaster587.advancedRocketry.dimension.DimensionManager.getInstance().getDimensionProperties(satellite.getDimensionId()).addSatallite(satellite);
+			if(satellite == null) {
+				AdvancedRocketry.logger.warn("Received satellite data with an unknown type");
+				return;
+			}
+			DimensionProperties properties =
+					zmaster587.advancedRocketry.dimension.DimensionManager
+							.getInstance()
+							.getDimensionProperties(satellite.getDimensionId());
+			if(properties == null) {
+				AdvancedRocketry.logger.warn("Received satellite data for an unknown dimension");
+				return;
+			}
+			properties.addSatallite(satellite);
 		} catch (IOException e) {
 			e.printStackTrace();
 			return;

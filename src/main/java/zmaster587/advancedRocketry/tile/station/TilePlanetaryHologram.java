@@ -137,7 +137,7 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 					}
 					else {
 						if(!starEntities.isEmpty()) {
-							float phaseInc = 4*360/starEntities.size();
+							float phaseInc = 4*360f/starEntities.size();
 							float phase = 0;
 							for(EntityUIStar entity : starEntities) {
 								double deltaX, deltaY;
@@ -265,7 +265,7 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 				//Spawn substars
 				if(currentStarBody.getSubStars() != null && !currentStarBody.getSubStars().isEmpty()) {
-					float phaseInc = 360/currentStarBody.getSubStars().size();
+					float phaseInc = 360f/currentStarBody.getSubStars().size();
 					float phase = 0;
 					int count = 0;
 					Collection<StellarBody> starList = currentStarBody.getSubStars();

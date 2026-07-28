@@ -20,17 +20,14 @@ public class DimensionBlockPosition {
 	
 	@Override
 	public boolean equals(Object arg0) {
-		
+		if(this == arg0)
+			return true;
 		if(!(arg0 instanceof DimensionBlockPosition))
 			return false;
-		
-		boolean flag = false;
-		
-		if(pos == null) {
-			flag = ((DimensionBlockPosition)arg0).pos == null;
-		}
-		
-		return dimid == ((DimensionBlockPosition)arg0).dimid && (flag || pos.equals(((DimensionBlockPosition)arg0).pos));
+
+		DimensionBlockPosition other = (DimensionBlockPosition)arg0;
+		return dimid == other.dimid
+				&& (pos == null ? other.pos == null : pos.equals(other.pos));
 	}
 	
 	@Override

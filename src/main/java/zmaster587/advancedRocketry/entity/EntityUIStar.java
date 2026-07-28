@@ -3,15 +3,21 @@ package zmaster587.advancedRocketry.entity;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
 import net.minecraft.world.World;
+import zmaster587.advancedRocketry.api.Constants;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.tile.station.TilePlanetaryHologram;
 
 public class EntityUIStar extends EntityUIPlanet {
 	
 	StellarBody star;
 	int subStar = -1;
-	public final static int starIDoffset = 10000;
+	/**
+	 * @deprecated use {@link Constants#STAR_ID_OFFSET}.
+	 */
+	@Deprecated
+	public final static int starIDoffset = Constants.STAR_ID_OFFSET;
 	protected static final int subStarData = 5;
 	
 	public EntityUIStar(World worldIn, StellarBody properties, TilePlanetaryHologram tile, double x, double y, double z) {
@@ -78,7 +84,8 @@ public class EntityUIStar extends EntityUIPlanet {
 	@Override
 	public boolean interactFirst(EntityPlayer player) {
 		if(!worldObj.isRemote && tile != null) {
-			tile.selectSystem(star.getId() + starIDoffset);
+			tile.selectSystem(StationTargetResolver.getInstance()
+					.getSelectorId(star.getId()));
 		}
 		return true;
 	}

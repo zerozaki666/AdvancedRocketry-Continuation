@@ -203,7 +203,7 @@ public abstract class SpaceObjectBase implements ISpaceObject {
 		if(id == this.getOrbitingPlanetId())
 			return;
 
-		properties.setParentPlanet(zmaster587.advancedRocketry.dimension.DimensionManager.getInstance().getDimensionProperties(id), false);
+		properties.setParentPlanetIdForStation(id);
 	}
 
 	@Override

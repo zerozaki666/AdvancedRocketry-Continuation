@@ -23,6 +23,8 @@ import zmaster587.advancedRocketry.item.ItemPlanetIdentificationChip;
 import zmaster587.advancedRocketry.network.PacketSpaceStationInfo;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.tile.multiblock.TileWarpCore;
 import zmaster587.advancedRocketry.util.IDataInventory;
 import zmaster587.advancedRocketry.world.util.MultiData;
@@ -53,6 +55,7 @@ import zmaster587.libVulpes.util.BlockPosition;
 import zmaster587.libVulpes.util.EmbeddedInventory;
 import zmaster587.libVulpes.util.INetworkMachine;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.entity.player.EntityPlayerMP;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.tileentity.TileEntity;
@@ -69,7 +72,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 	private SpaceObject station;
 	private static final int ARTIFACT_BEGIN_RANGE = 4, ARTIFACT_END_RANGE = 8;
 	ModulePanetImage srcPlanetImg, dstPlanetImg;
-	ModuleSync sync1, sync2, sync3;
+	ModuleSync sync1, sync2, sync3, sync4, sync5, sync6;
 	ModuleText srcPlanetText, dstPlanetText, warpFuel, status, warpCapacity;
 	int warpCost = -1;
 	int dstPlanet, srcPlanet;
@@ -102,39 +105,76 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 
 	protected int getTravelCost() {
-		if(getSpaceObject() != null) {
-			DimensionProperties properties = getSpaceObject().getProperties().getParentProperties();
-			//properties.orbitalDist = 1;
-			DimensionProperties destProperties = DimensionManager.getInstance().getDimensionProperties(getSpaceObject().getDestOrbitingBody());
+		SpaceObject object = getSpaceObject();
+		if(object == null)
+			return Integer.MAX_VALUE;
 
-			if(properties == DimensionManager.defaultSpaceDimensionProperties)
-				return Integer.MAX_VALUE;
+		StationTarget source = StationTargetResolver.getInstance()
+				.resolve(object.getOrbitingPlanetId());
+		StationTarget destination = StationTargetResolver.getInstance()
+				.resolve(object.getDestOrbitingBody());
+		if(!source.isDestination() || !destination.isDestination()
+				|| source.getRawId() == destination.getRawId())
+			return Integer.MAX_VALUE;
 
-			if(destProperties.getStar() != properties.getStar())
-				return 500;
+		DimensionProperties properties = source.getDimensionProperties();
+		DimensionProperties destProperties =
+				destination.getDimensionProperties();
+		if(properties == null || destProperties == null
+				|| source.getStellarBody() == null
+				|| destination.getStellarBody() == null)
+			return Integer.MAX_VALUE;
 
-			while(destProperties.getParentProperties() != null && destProperties.isMoon())
-				destProperties = destProperties.getParentProperties();
+		if(source.getStellarBody().getId()
+				!= destination.getStellarBody().getId())
+			return 500;
 
-			if((destProperties.isMoon() && destProperties.getParentPlanet() == properties.getId()) || (properties.isMoon() && properties.getParentPlanet() == destProperties.getId()))
-				return 1;
-
-			while(properties.isMoon())
-				properties = properties.getParentProperties();
-
-			//TODO: actual trig
-			if(properties.getStar().getId() == destProperties.getStar().getId()) {
-				double x1 = properties.orbitalDist*MathHelper.cos((float) properties.orbitTheta);
-				double y1 = properties.orbitalDist*MathHelper.sin((float) properties.orbitTheta);
-				double x2 = destProperties.orbitalDist*MathHelper.cos((float) destProperties.orbitTheta);
-				double y2 = destProperties.orbitalDist*MathHelper.sin((float) destProperties.orbitTheta);
-
-				return Math.max((int)Math.sqrt(Math.pow((x1 - x2),2) + Math.pow((y1 - y2),2)),1);
-
-				//return Math.abs(properties.orbitalDist - destProperties.orbitalDist);
+		if(source.getKind() == StationTarget.Kind.BLACK_HOLE_STAR
+				|| destination.getKind()
+						== StationTarget.Kind.BLACK_HOLE_STAR) {
+			DimensionProperties planet = source.getKind()
+					== StationTarget.Kind.BLACK_HOLE_STAR
+					? destProperties : properties;
+			while(planet.isMoon()) {
+				DimensionProperties parent = planet.getParentProperties();
+				if(parent == null)
+					return Integer.MAX_VALUE;
+				planet = parent;
 			}
+			return Math.max(planet.orbitalDist, 1);
 		}
-		return Integer.MAX_VALUE;
+
+		while(destProperties.getParentProperties() != null
+				&& destProperties.isMoon())
+			destProperties = destProperties.getParentProperties();
+
+		if((destProperties.isMoon()
+				&& destProperties.getParentPlanet() == properties.getId())
+				|| (properties.isMoon()
+						&& properties.getParentPlanet()
+								== destProperties.getId()))
+			return 1;
+
+		while(properties.isMoon()) {
+			DimensionProperties parent = properties.getParentProperties();
+			if(parent == null)
+				return Integer.MAX_VALUE;
+			properties = parent;
+		}
+
+		double x1 = properties.orbitalDist
+				* MathHelper.cos((float)properties.orbitTheta);
+		double y1 = properties.orbitalDist
+				* MathHelper.sin((float)properties.orbitTheta);
+		double x2 = destProperties.orbitalDist
+				* MathHelper.cos((float)destProperties.orbitTheta);
+		double y2 = destProperties.orbitalDist
+				* MathHelper.sin((float)destProperties.orbitTheta);
+		double cost = Math.sqrt(Math.pow(x1 - x2, 2)
+				+ Math.pow(y1 - y2, 2));
+		if(Double.isNaN(cost) || Double.isInfinite(cost))
+			return Integer.MAX_VALUE;
+		return Math.max((int)Math.min(Integer.MAX_VALUE, cost), 1);
 	}
 
 	@Override
@@ -159,15 +199,21 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 			if(tabModule.getTab() == 0) {
 				modules.add(tabModule);
 				//Don't keep recreating it otherwise data is stale
-				if(sync1 == null) {
-					sync1 = new ModuleSync(0, this);
-					sync2 = new ModuleSync(1, this);
-					sync3 = new ModuleSync(2, this);
+					if(sync1 == null) {
+						sync1 = new ModuleSync(0, this);
+						sync2 = new ModuleSync(1, this);
+						sync3 = new ModuleSync(2, this);
+						sync4 = new ModuleSync(3, this);
+						sync5 = new ModuleSync(4, this);
+						sync6 = new ModuleSync(5, this);
 
-				}
-				modules.add(sync1);
-				modules.add(sync2);
-				modules.add(sync3);
+					}
+					modules.add(sync1);
+					modules.add(sync2);
+					modules.add(sync3);
+					modules.add(sync4);
+					modules.add(sync5);
+					modules.add(sync6);
 
 				ISpaceObject station = getSpaceObject();
 				boolean isOnStation = station != null;
@@ -202,7 +248,11 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 				//Status text
 				modules.add(new ModuleText(baseX, baseY + sizeY + 20, LibVulpes.proxy.getLocalizedString("msg.warpmon.corestatus"), 0x1b1b1b));
-				boolean flag = isOnStation && getSpaceObject().getFuelAmount() >= getTravelCost() && getSpaceObject().hasUsableWarpCore();
+				int travelCost = getTravelCost();
+				boolean flag = isOnStation
+						&& travelCost != Integer.MAX_VALUE
+						&& getSpaceObject().getFuelAmount() >= travelCost
+						&& getSpaceObject().hasUsableWarpCore();
 				flag = flag && !(isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody()));
 				boolean artifactFlag = (dimCache != null && meetsArtifactReq(dimCache));
 				canWarp = new ModuleText(baseX, baseY + sizeY + 30, (isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody())) ? LibVulpes.proxy.getLocalizedString("msg.warpmon.nowhere") : 
@@ -225,8 +275,12 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 				modules.add(warp);
 
-				if(dimCache == null && isOnStation && station.getOrbitingPlanetId() != SpaceObjectManager.WARPDIMID )
-					dimCache = DimensionManager.getInstance().getDimensionProperties(station.getOrbitingPlanetId());
+				if(dimCache == null && isOnStation) {
+					StationTarget destination = StationTargetResolver
+							.getInstance().resolve(
+									station.getDestOrbitingBody());
+					dimCache = destination.getDimensionProperties();
+				}
 
 				if(!worldObj.isRemote && isOnStation) {
 					PacketHandler.sendToPlayer(new PacketSpaceStationInfo(getSpaceObject().getId(), getSpaceObject()), player);
@@ -280,9 +334,15 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 			//Open planet selector menu
 			SpaceObject station = getSpaceObject();
 			int starId = 0;
-			if(station != null)
-				starId = station.getProperties().getParentProperties().getStar().getId();
-			container = new ModulePlanetSelector(starId, zmaster587.libVulpes.inventory.TextureResources.starryBG, this, this, true);
+			if(station != null) {
+				StationTarget source = StationTargetResolver.getInstance()
+						.resolve(station.getOrbitingPlanetId());
+				if(source.getStellarBody() != null)
+					starId = source.getStellarBody().getId();
+			}
+			container = new ModulePlanetSelector(starId,
+					zmaster587.libVulpes.inventory.TextureResources.starryBG,
+					this, this, true, true);
 			container.setOffset(1000, 1000);
 			modules.add(container);
 		}
@@ -294,14 +354,15 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		ISpaceObject station = getSpaceObject();
 		boolean isOnStation = station != null;
 		DimensionProperties location;
-		boolean hasAtmo = true;
 		String planetName;
 
 		if(isOnStation) {
-			DimensionProperties properties = DimensionManager.getInstance().getDimensionProperties(station.getOrbitingPlanetId());
-			location = properties;
-			hasAtmo = properties.hasAtmosphere();
-			planetName = properties.getName();
+			StationTarget source = StationTargetResolver.getInstance()
+					.resolve(station.getOrbitingPlanetId());
+			location = source.getDimensionProperties();
+			planetName = location == null ? "???" : location.getName();
+			if(location == null)
+				location = DimensionManager.defaultSpaceDimensionProperties;
 		}
 		else {
 			location = DimensionManager.getInstance().getDimensionProperties(worldObj.provider.dimensionId);
@@ -311,7 +372,10 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 				planetName = "???";
 		}
 
-		boolean flag = isOnStation && getSpaceObject().getFuelAmount() >= warpCost && getSpaceObject().hasUsableWarpCore();
+		boolean flag = isOnStation && warpCost >= 0
+				&& warpCost < Integer.MAX_VALUE
+				&& getSpaceObject().getFuelAmount() >= warpCost
+				&& getSpaceObject().hasUsableWarpCore();
 
 		if(canWarp != null) {
 			flag = flag && !(isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody()));
@@ -357,11 +421,14 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 
 			DimensionProperties dstProps = null;
-			if(isOnStation && station.getOrbitingPlanetId() != SpaceObjectManager.WARPDIMID )
-				dstProps = DimensionManager.getInstance().getDimensionProperties(dstPlanet);
+			if(isOnStation) {
+				StationTarget destination = StationTargetResolver.getInstance()
+						.resolve(dstPlanet);
+				if(destination.isDestination())
+					dstProps = destination.getDimensionProperties();
+			}
 
 			if(dstProps != null) {
-				hasAtmo = dstProps.hasAtmosphere();
 				planetName = dstProps.getName();
 				location = dstProps;
 
@@ -386,7 +453,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	@Override
 	public boolean canInteractWithContainer(EntityPlayer entity) {
-		return true;
+		return isAuthorizedActor(entity);
 	}
 
 	@Override
@@ -440,15 +507,26 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 	@Override
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
+		if(!isAuthorizedActor(player))
+			return;
+
 		if(id == 0)
 			player.openGui(LibVulpes.instance, guiId.MODULARFULLSCREEN.ordinal(), worldObj, this.xCoord, this.yCoord, this.zCoord);
 		else if(id == 1 || id == 3) {
-			int dimId = nbt.getInteger("id");
+			int rawId = nbt.getInteger("id");
+			if(!(player instanceof EntityPlayerMP)
+					|| !StationTargetResolver.getInstance()
+							.isAllowedDestination(rawId,
+									(EntityPlayerMP)player))
+				return;
+			StationTarget target = StationTargetResolver.getInstance()
+					.resolve(rawId);
+			if(!isTargetKnown(target))
+				return;
 
-			if(isPlanetKnown(DimensionManager.getInstance().getDimensionProperties(dimId))) {
-				container.setSelectedSystem(dimId);
-				selectSystem(dimId);
-			}
+			if(container != null)
+				container.setSelectedSystem(rawId);
+			selectSystem(rawId);
 
 			//Update known planets
 			markDirty();
@@ -458,9 +536,31 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		}
 		else if(id == 2) {
 			SpaceObject station = getSpaceObject();
+			if(station == null || !(player instanceof EntityPlayerMP))
+				return;
 
-			if(station != null && station.hasUsableWarpCore() && station.useFuel(getTravelCost()) != 0 && meetsArtifactReq(DimensionManager.getInstance().getDimensionProperties(station.getDestOrbitingBody()))) {
-				SpaceObjectManager.getSpaceManager().moveStationToBody(station, station.getDestOrbitingBody(), Math.max(Math.min(getTravelCost()*5, 5000),0));
+			int destinationId = station.getDestOrbitingBody();
+			StationTarget destination = StationTargetResolver.getInstance()
+					.resolve(destinationId);
+			int travelCost = getTravelCost();
+			if(!StationTargetResolver.getInstance().isAllowedDestination(
+						destinationId, (EntityPlayerMP)player)
+					|| !isTargetKnown(destination)
+					|| !station.hasUsableWarpCore()
+					|| travelCost <= 0
+					|| travelCost == Integer.MAX_VALUE
+					|| station.getFuelAmount() < travelCost
+					|| destination.getDimensionProperties() == null
+					|| !meetsArtifactReq(
+							destination.getDimensionProperties()))
+				return;
+
+			// All validation precedes the single authoritative fuel mutation.
+			if(station.useFuel(travelCost) == travelCost) {
+				int transitionDuration = (int)Math.min(5000L,
+						(long)travelCost * 5L);
+				SpaceObjectManager.getSpaceManager().moveStationToBody(
+						station, destinationId, transitionDuration);
 
 
 				for (Object plr : worldObj.playerEntities) {
@@ -540,16 +640,47 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 	}
 
 	private void selectSystem(int id) {
-		if(getSpaceObject().getOrbitingPlanetId() == SpaceObjectManager.WARPDIMID || id == SpaceObjectManager.WARPDIMID)
+		SpaceObject object = getSpaceObject();
+		if(object == null
+				|| object.getOrbitingPlanetId()
+						== SpaceObjectManager.WARPDIMID)
+			return;
+		StationTarget target = StationTargetResolver.getInstance()
+				.resolve(id);
+		if(!target.isDestination()) {
 			dimCache = null;
-		else {
-			dimCache = DimensionManager.getInstance().getDimensionProperties(container.getSelectedSystem());
-
-			ISpaceObject station = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
-			if(station != null) {
-				station.setDestOrbitingBody(id);
-			}
+			return;
 		}
+		dimCache = target.getDimensionProperties();
+		object.setDestOrbitingBody(id);
+	}
+
+	private boolean isAuthorizedActor(EntityPlayer player) {
+		if(player == null || worldObj == null || player.worldObj != worldObj
+				|| worldObj.provider.dimensionId
+						!= Configuration.spaceDimId
+				|| worldObj.getTileEntity(xCoord, yCoord, zCoord) != this
+				|| player.getDistanceSq(xCoord + 0.5D, yCoord + 0.5D,
+						zCoord + 0.5D) > 64D)
+			return false;
+		ISpaceObject actorStation = SpaceObjectManager.getSpaceManager()
+				.getSpaceStationFromBlockCoords((int)player.posX,
+						(int)player.posZ);
+		return actorStation != null && actorStation == getSpaceObject();
+	}
+
+	private boolean isTargetKnown(StationTarget target) {
+		SpaceObject object = getSpaceObject();
+		if(object == null || target == null)
+			return false;
+		if(target.getKind() == StationTarget.Kind.BLACK_HOLE_STAR)
+			return target.getStellarBody() != null
+					&& object.isStarKnown(target.getStellarBody());
+		if(target.getKind() == StationTarget.Kind.DIMENSION)
+			return target.getDimensionProperties() != null
+					&& object.isPlanetKnown(
+							target.getDimensionProperties());
+		return false;
 	}
 
 	@Override
@@ -626,36 +757,54 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	@Override
 	public void setData(int id, int value) {
-		//Id: 0, destination planet
-		//Id: 1, source planet
+		// Vanilla's progress update payload is a signed short. Split each
+		// full target/cost integer into low and high unsigned halves.
+		if(id == 0)
+			dstPlanet = mergeLowHalf(dstPlanet, value);
+		else if(id == 1)
+			srcPlanet = mergeLowHalf(srcPlanet, value);
+		else if(id == 2)
+			warpCost = mergeLowHalf(warpCost, value);
+		else if(id == 3)
+			dstPlanet = mergeHighHalf(dstPlanet, value);
+		else if(id == 4)
+			srcPlanet = mergeHighHalf(srcPlanet, value);
+		else if(id == 5)
+			warpCost = mergeHighHalf(warpCost, value);
 
-		if(id == 2) {
-			warpCost = value;
-		}
-		if(id == 1)
-			srcPlanet = value;
-		else if (id == 0)
-			dstPlanet = value;
-		setPlanetModuleInfo();
+		if(id == 0 || id == 1 || id == 3 || id == 4)
+			setPlanetModuleInfo();
 	}
 
 
 	@Override
 	public int getData(int id) {
-
-		if(id == 2)
-			return getTravelCost();
-
 		ISpaceObject station = getSpaceObject();
-		boolean isOnStation = station != null;
-		if(isOnStation) {
-			if(id == 1)
-				return station.getOrbitingPlanetId();
-			else //id == 1
-				return station.getDestOrbitingBody();
-		}
-
+		int source = station == null ? 0 : station.getOrbitingPlanetId();
+		int destination = station == null
+				? 0 : station.getDestOrbitingBody();
+		int cost = getTravelCost();
+		if(id == 0)
+			return destination & 0xFFFF;
+		if(id == 1)
+			return source & 0xFFFF;
+		if(id == 2)
+			return cost & 0xFFFF;
+		if(id == 3)
+			return destination >>> 16;
+		if(id == 4)
+			return source >>> 16;
+		if(id == 5)
+			return cost >>> 16;
 		return 0;
+	}
+
+	private static int mergeLowHalf(int current, int lowHalf) {
+		return (current & 0xFFFF0000) | (lowHalf & 0xFFFF);
+	}
+
+	private static int mergeHighHalf(int current, int highHalf) {
+		return (current & 0xFFFF) | ((highHalf & 0xFFFF) << 16);
 	}
 
 	@Override
@@ -726,7 +875,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	@Override
 	public boolean isUseableByPlayer(EntityPlayer player) {
-		return true;
+		return isAuthorizedActor(player);
 	}
 
 	@Override
@@ -798,7 +947,8 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	private boolean meetsArtifactReq(DimensionProperties properties) {
 		//Make sure we have all the artifacts
-		
+		if(properties == null)
+			return false;
 		if(properties.getRequiredArtifacts().isEmpty())
 			return true;
 		
@@ -873,6 +1023,8 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	@Override
 	public boolean isPlanetKnown(IDimensionProperties properties) {
+		if(properties == null)
+			return false;
 		SpaceObject obj = getSpaceObject();
 		if(obj != null)
 			return obj.isPlanetKnown(properties);
@@ -882,6 +1034,8 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	@Override
 	public boolean isStarKnown(StellarBody body) {
+		if(body == null)
+			return false;
 		SpaceObject obj = getSpaceObject();
 		if(obj != null)
 			return obj.isStarKnown(body);

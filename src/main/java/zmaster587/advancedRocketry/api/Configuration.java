@@ -145,6 +145,32 @@ public class Configuration {
 	public static boolean spaceSkyOverride;
 	public static double maxSpaceRocketSpeed;
 
+	public static BlackHoleInteractionMode blackHoleFreeSpaceInteraction =
+			BlackHoleInteractionMode.VISUAL_ONLY;
+	public static double blackHoleGravityConstant = 0.01D;
+	public static double blackHoleMaxAcceleration = 0.05D;
+	public static int blackHoleWarningInterval = 40;
+
+	public static BlackHoleLuminosityMode blackHoleLuminosityMode =
+			BlackHoleLuminosityMode.UPSTREAM_COMPAT;
+	public static BlackHoleRenderMode blackHoleRenderMode =
+			BlackHoleRenderMode.AUTO;
+	public static int blackHoleShaderMinScreenRadius = 24;
+	public static int blackHoleMaxShaderBodies = 2;
+	public static int blackHoleShaderStepsFast = 16;
+	public static int blackHoleShaderStepsHigh = 32;
+	public static final boolean blackHoleFallbackAlwaysAvailable = true;
+
+	public static double blackHoleGeneratorMultiplier = 1D;
+	public static int defaultItemTimeBlackHole = 500;
+	public static String[] blackHoleTimings = new String[] {
+			"minecraft:stone;1",
+			"minecraft:dirt;1",
+			"minecraft:netherrack;1",
+			"minecraft:cobblestone;1"
+	};
+	public static boolean blackHoleAllowUnlistedMatter = true;
+
 	public static boolean allowTerraformNonAR;
 	public static boolean forcePlayerRespawnInSpace;
 }

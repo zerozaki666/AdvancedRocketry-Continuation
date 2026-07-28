@@ -5,6 +5,8 @@ import java.util.List;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.util.Vector3F;
 import net.minecraft.entity.player.EntityPlayer;
@@ -97,7 +99,15 @@ public class ItemStationChip extends ItemIdWithName {
 				ISpaceObject obj = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords((int)player.posX, (int)player.posZ);
 				
 				if(obj != null) {
-					Vector3F<Float> vec = getTakeoffCoords(stack, obj.getOrbitingPlanetId());
+					StationTarget target = StationTargetResolver.getInstance()
+							.resolve(obj.getOrbitingPlanetId());
+					// Takeoff coordinates are keyed by real, landable
+					// dimensions.  Synthetic black holes, warp, and invalid
+					// station targets must never enter that lookup.
+					Vector3F<Float> vec = target.getKind()
+							== StationTarget.Kind.DIMENSION
+							? getTakeoffCoords(stack, target.getRawId())
+							: null;
 					
 					if(vec != null) {
 						list.add("X: " + vec.x);

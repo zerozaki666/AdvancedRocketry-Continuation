@@ -33,6 +33,8 @@ import zmaster587.advancedRocketry.atmosphere.AtmosphereType;
 import zmaster587.advancedRocketry.network.PacketDimInfo;
 import zmaster587.advancedRocketry.network.PacketSatellite;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
 import zmaster587.advancedRocketry.util.OreGenProperties;
 import zmaster587.advancedRocketry.util.SpawnListEntryNBT;
@@ -133,6 +135,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	public static final ResourceLocation planetRingShadow = new ResourceLocation("advancedrocketry:textures/planets/ringshadow.png");
 	public static final ResourceLocation shadow = new ResourceLocation("advancedrocketry:textures/planets/shadow.png");
 	public static final ResourceLocation shadow3 = new ResourceLocation("advancedrocketry:textures/planets/shadow3.png");
+	public static final ResourceLocation blackHoleIcon = new ResourceLocation(
+			"advancedrocketry:textures/env/blackhole_icon.png");
 
 	public static enum PlanetIcons {
 		EARTHLIKE(new ResourceLocation("advancedrocketry:textures/planets/earthlike.png")),
@@ -233,6 +237,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	private int planetId;
 	private boolean isStation;
 	private boolean isGasGiant;
+	private transient boolean starProxy;
+	private transient StellarBody starData;
 
 	//Satallites
 	private HashMap<Long,SatelliteBase> satallites;
@@ -281,6 +287,46 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	public DimensionProperties(int id, boolean shouldRegister) {
 		this(id);
 		isStation = !shouldRegister;
+	}
+
+	/**
+	 * Creates an ephemeral, station-local view of a top-level black hole.
+	 * The returned object must never be registered as a Forge dimension or
+	 * inserted into the star's planet list.
+	 */
+	public static DimensionProperties createStarProxy(StellarBody star) {
+		return createStarProxy(star, StationTargetResolver.getInstance()
+				.getSelectorId(star == null ? -1 : star.getId()));
+	}
+
+	public static DimensionProperties createStarProxy(
+			StellarBody star, int targetId) {
+		if(star == null || !star.isBlackHole())
+			throw new IllegalArgumentException(
+					"Star proxies require a black-hole stellar body");
+		if(star.getId() < 0)
+			throw new IllegalArgumentException(
+					"Star id cannot be represented as a station target");
+
+		DimensionProperties proxy = new DimensionProperties(targetId, false);
+		proxy.starProxy = true;
+		proxy.starData = star;
+		proxy.star = star;
+		proxy.starId = star.getId();
+		proxy.name = star.getName();
+		proxy.isNativeDimension = false;
+		proxy.setAtmosphereDensityDirect(0);
+		proxy.averageTemperature = 0;
+		proxy.gravitationalMultiplier = 0F;
+		proxy.mass = (float)Math.min(Float.MAX_VALUE,
+				star.getSimulationMass());
+		// A star proxy is also consumed by the legacy planetary-sky path,
+		// which scales apparent body size as 100 / orbitalDist.  Keep the
+		// proxy at the normalised one-AU visual distance so a station directly
+		// orbiting a black hole never feeds zero into that calculation.
+		proxy.orbitalDist = 100;
+		proxy.hasOxygen = false;
+		return proxy;
 	}
 	
 	public void copySatellites(DimensionProperties props) {
@@ -382,9 +428,31 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return the host star for this planet
 	 */
 	public StellarBody getStar() {
+		if(starProxy)
+			return starData;
+		if(isStation) {
+			StationTarget target = StationTargetResolver.getInstance()
+					.resolve(parentPlanet);
+			if(target.getKind() == StationTarget.Kind.DIMENSION
+					|| target.getKind() == StationTarget.Kind.BLACK_HOLE_STAR)
+				return target.getStellarBody();
+			return null;
+		}
 		if(star == null)
 			star = DimensionManager.getInstance().getStar(starId);
 		return star;
+	}
+
+	/**
+	 * @return the stellar body represented by this proxy, or null for a real
+	 * dimension.
+	 */
+	public StellarBody getStarData() {
+		return starProxy ? starData : null;
+	}
+
+	public boolean isStar() {
+		return starProxy;
 	}
 
 	public int getStarId() {
@@ -437,6 +505,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return the {@link ResourceLocation} representing this planet, generated from the planet's properties
 	 */
 	public ResourceLocation getPlanetIcon() {
+		if(starProxy && starData != null && starData.isBlackHole())
+			return blackHoleIcon;
 		if(customIcon != null && !customIcon.isEmpty())
 		{
 			try {
@@ -476,6 +546,8 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return the {@link ResourceLocation} representing this planet, generated from the planet's properties
 	 */
 	public ResourceLocation getPlanetIconLEO() {
+		if(starProxy && starData != null && starData.isBlackHole())
+			return blackHoleIcon;
 		if(customIcon != null && !customIcon.isEmpty())
 		{
 			try {
@@ -545,9 +617,37 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return the {@link DimensionProperties} of the parent planet
 	 */
 	public DimensionProperties getParentProperties() {
+		if(isStation) {
+			StationTarget target = StationTargetResolver.getInstance()
+					.resolve(parentPlanet);
+			return target.isDestination()
+					? target.getDimensionProperties() : null;
+		}
 		if(parentPlanet != -1)
 			return DimensionManager.getInstance().getDimensionProperties(parentPlanet);
 		return null;
+	}
+
+	/**
+	 * Stores an orbit target without resolving it through DimensionManager's
+	 * legacy overworld fallback.  Only station property objects may use this
+	 * method.
+	 */
+	public void setParentPlanetIdForStation(int parentId) {
+		if(!isStation)
+			throw new IllegalStateException(
+					"Raw station targets may only be stored on station properties");
+		parentPlanet = parentId;
+		StationTarget target = StationTargetResolver.getInstance()
+				.resolve(parentId);
+		if(target.getKind() == StationTarget.Kind.DIMENSION
+				|| target.getKind() == StationTarget.Kind.BLACK_HOLE_STAR) {
+			star = target.getStellarBody();
+			if(star != null)
+				starId = star.getId();
+		}
+		else
+			star = null;
 	}
 
 	/**
@@ -562,14 +662,20 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return if a planet, the same as getParentOrbitalDistance(), if a moon, the moon's distance from the host star
 	 */
 	public int getSolarOrbitalDistance() {
-		if(parentPlanet != -1)
-			return getParentProperties().getSolarOrbitalDistance();
+		if(parentPlanet != -1) {
+			DimensionProperties parent = getParentProperties();
+			if(parent != null)
+				return parent.getSolarOrbitalDistance();
+		}
 		return orbitalDist;
 	}
 
 	public double getSolarTheta() {
-		if(parentPlanet != -1)
-			return getParentProperties().getSolarTheta();
+		if(parentPlanet != -1) {
+			DimensionProperties parent = getParentProperties();
+			if(parent != null)
+				return parent.getSolarTheta();
+		}
 		return orbitTheta;
 	}
 
@@ -624,7 +730,16 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return true if this DIM orbits another
 	 */
 	public boolean isMoon() {
-		return parentPlanet != -1 && parentPlanet != SpaceObjectManager.WARPDIMID;
+		if(parentPlanet == -1 || parentPlanet == SpaceObjectManager.WARPDIMID)
+			return false;
+		if(isStation) {
+			StationTarget target = StationTargetResolver.getInstance()
+					.resolve(parentPlanet);
+			// A station directly orbiting a star has no parent planet to draw.
+			// Invalid synthetic targets also remain fail-closed.
+			return target.getKind() == StationTarget.Kind.DIMENSION;
+		}
+		return true;
 	}
 
 	/**
@@ -738,8 +853,11 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	 * @return how many moons deep this planet is, IE: if the moon of a moon of a planet then three is returned
 	 */
 	public int getPathLengthToStar() {
-		if(isMoon())
-			return 1 + getParentProperties().getPathLengthToStar();
+		if(isMoon()) {
+			DimensionProperties parent = getParentProperties();
+			if(parent != null)
+				return 1 + parent.getPathLengthToStar();
+		}
 		return 1;
 	}
 
@@ -1352,6 +1470,13 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		}
 		else
 			fillerBlock = null;
+
+		// Older station saves could carry a stale starId because the orbit
+		// field historically stored only real dimension IDs.  Re-resolve the
+		// raw parent after all stars are loaded so synthetic black-hole targets
+		// restore the correct host star and write a repaired starId next save.
+		if(isStation && parentPlanet != -1)
+			setParentPlanetIdForStation(parentPlanet);
 	}
 
 	public void writeToNBT(NBTTagCompound nbt) {

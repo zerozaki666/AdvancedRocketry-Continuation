@@ -35,6 +35,8 @@ import zmaster587.advancedRocketry.client.render.entity.RendererItem;
 import zmaster587.advancedRocketry.client.render.item.RendererBucket;
 import zmaster587.advancedRocketry.client.render.item.RendererLaserGun;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderBiomeScanner;
+import zmaster587.advancedRocketry.client.render.multiblocks.RenderBlackHoleGenerator;
+import zmaster587.advancedRocketry.client.render.blackhole.BlackHoleRenderManager;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderGravityMachine;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderPlanetAnalyser;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderTerraformerAtm;
@@ -86,6 +88,7 @@ import zmaster587.advancedRocketry.tile.multiblock.TileRailgun;
 import zmaster587.advancedRocketry.tile.multiblock.TileSpaceElevator;
 import zmaster587.advancedRocketry.tile.multiblock.TileWarpCore;
 import zmaster587.advancedRocketry.tile.multiblock.energy.TileMicrowaveReciever;
+import zmaster587.advancedRocketry.tile.multiblock.energy.TileBlackHoleGenerator;
 import zmaster587.advancedRocketry.tile.multiblock.machine.TileChemicalReactor;
 import zmaster587.advancedRocketry.tile.multiblock.machine.TileCrystallizer;
 import zmaster587.advancedRocketry.tile.multiblock.machine.TileCuttingMachine;
@@ -112,6 +115,7 @@ public class ClientProxy extends CommonProxy {
 	
 	@Override
 	public void registerRenderers() {
+		BlackHoleRenderManager.INSTANCE.registerResourceReloadListener();
 		
 		RendererModelBlock modelBlock = new RendererModelBlock();
 		
@@ -133,6 +137,8 @@ public class ClientProxy extends CommonProxy {
 		ClientRegistry.bindTileEntitySpecialRenderer(TileDataPipe.class, new RendererPipe(new ResourceLocation("AdvancedRocketry:textures/blocks/pipeData.png")));
 		ClientRegistry.bindTileEntitySpecialRenderer(TileEnergyPipe.class, new RendererPipe(new ResourceLocation("AdvancedRocketry:textures/blocks/pipeEnergy.png")));
 		ClientRegistry.bindTileEntitySpecialRenderer(TileMicrowaveReciever.class, new RendererMicrowaveReciever());
+		ClientRegistry.bindTileEntitySpecialRenderer(
+				TileBlackHoleGenerator.class, new RenderBlackHoleGenerator());
 		ClientRegistry.bindTileEntitySpecialRenderer(TileSpaceLaser.class, new RenderLaserTile());
 		ClientRegistry.bindTileEntitySpecialRenderer(TileBiomeScanner.class, new RenderBiomeScanner());
 		ClientRegistry.bindTileEntitySpecialRenderer(TileAtmosphereTerraformer.class, new RenderTerraformerAtm());

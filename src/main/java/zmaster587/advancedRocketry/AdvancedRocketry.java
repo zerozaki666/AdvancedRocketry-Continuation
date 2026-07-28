@@ -155,6 +155,7 @@ import zmaster587.advancedRocketry.satellite.SatelliteOptical;
 import zmaster587.advancedRocketry.satellite.SatelliteOreMapping;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.thread.RocketStructureThread;
 import zmaster587.advancedRocketry.tile.Satellite.TileEntitySatelliteControlCenter;
 import zmaster587.advancedRocketry.tile.Satellite.TileSatelliteBuilder;
@@ -173,6 +174,8 @@ import zmaster587.advancedRocketry.tile.infrastructure.TileRocketFluidUnloader;
 import zmaster587.advancedRocketry.tile.infrastructure.TileRocketLoader;
 import zmaster587.advancedRocketry.tile.infrastructure.TileRocketUnloader;
 import zmaster587.advancedRocketry.tile.multiblock.*;
+import zmaster587.advancedRocketry.tile.multiblock.energy.BlackHoleGeneratorRegistration;
+import zmaster587.advancedRocketry.tile.multiblock.energy.TileBlackHoleGenerator;
 import zmaster587.advancedRocketry.tile.multiblock.energy.TileMicrowaveReciever;
 import zmaster587.advancedRocketry.tile.multiblock.machine.TileChemicalReactor;
 import zmaster587.advancedRocketry.tile.multiblock.machine.TileCrystallizer;
@@ -275,6 +278,7 @@ public class AdvancedRocketry {
 	final String PLANET = "Planet";
 	final String ASTEROID = "Asteroid";
 	final String GAS_MINING = "GasMining";
+	final String ENERGY = "Energy";
 	final String PERFORMANCE = "Performance";
 	final String CLIENT = "Client";
 
@@ -371,10 +375,72 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.stationSkyOverride = config.get(CLIENT, "StationSkyOverride", true, "If true, AR will use a custom skybox on space stations").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.spaceSkyOverride = config.get(CLIENT, "SpaceSkyOverride", true, "If true, AR will render the simulated universe in the free-space dimension").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.maxSpaceRocketSpeed = config.get(Configuration.CATEGORY_GENERAL, "maxSpaceRocketSpeed", 1.0D, "Maximum vector speed of a manually flown rocket in free space", 0.05D, 10.0D).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleFreeSpaceInteraction =
+				zmaster587.advancedRocketry.api.BlackHoleInteractionMode.parse(
+						config.get(Configuration.CATEGORY_GENERAL,
+								"blackHoleFreeSpaceInteraction", "VISUAL_ONLY",
+								"VISUAL_ONLY, WARNING, GRAVITY, or CAPTURE. Destructive capture is opt-in.")
+								.getString());
+		zmaster587.advancedRocketry.api.Configuration.blackHoleGravityConstant =
+				config.get(Configuration.CATEGORY_GENERAL,
+						"blackHoleGravityConstant", 0.01D,
+						"Gameplay gravity coefficient used only in free space",
+						0D, 100D).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleMaxAcceleration =
+				config.get(Configuration.CATEGORY_GENERAL,
+						"blackHoleMaxAcceleration", 0.05D,
+						"Maximum black-hole acceleration applied per tick",
+						0D, 10D).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleWarningInterval =
+				config.get(Configuration.CATEGORY_GENERAL,
+						"blackHoleWarningInterval", 40,
+						"Minimum ticks between warnings for one rocket/body pair",
+						1, 1200).getInt();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleLuminosityMode =
+				zmaster587.advancedRocketry.api.BlackHoleLuminosityMode.parse(
+						config.get(Configuration.CATEGORY_GENERAL,
+								"blackHoleLuminosityMode", "UPSTREAM_COMPAT",
+								"UPSTREAM_COMPAT or ACCRETION_RATE")
+								.getString());
 		zmaster587.advancedRocketry.api.Configuration.planetSkyOverride = config.get(CLIENT, "PlanetSkyOverride", true, "If true, AR will use a custom skybox on planets").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.skyOverride = config.get(CLIENT, "overworldSkyOverride", true).getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.advancedVFX = config.get(PERFORMANCE, "advancedVFX", true, "Advanced visual effects").getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleRenderMode =
+				zmaster587.advancedRocketry.api.BlackHoleRenderMode.parse(
+						config.get(CLIENT, "blackHoleRenderMode", "AUTO",
+								"AUTO, HIGH, FAST, or LEGACY").getString());
+		zmaster587.advancedRocketry.api.Configuration.blackHoleShaderMinScreenRadius =
+				config.get(CLIENT, "blackHoleShaderMinScreenRadius", 24,
+						"Minimum apparent radius in pixels before shaders are considered",
+						1, 4096).getInt();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleMaxShaderBodies =
+				config.get(CLIENT, "blackHoleMaxShaderBodies", 2,
+						"Maximum Kerr shader bodies per celestial pass",
+						0, 16).getInt();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleShaderStepsFast =
+				config.get(PERFORMANCE, "blackHoleShaderStepsFast", 16,
+						"Bounded FAST approximation steps", 4, 32).getInt();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleShaderStepsHigh =
+				config.get(PERFORMANCE, "blackHoleShaderStepsHigh", 32,
+						"Bounded HIGH approximation steps", 8, 32).getInt();
 		zmaster587.advancedRocketry.api.Configuration.gravityAffectsFuel = config.get(Configuration.CATEGORY_GENERAL, "gravityAffectsFuels", true, "If true planets with higher gravity require more fuel and lower gravity would require less").getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleGeneratorMultiplier =
+				config.get(ENERGY, "blackHoleGeneratorMultiplier", 1D,
+						"Multiplier applied to the generator's 500 RF/t base output",
+						0D, Double.MAX_VALUE).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.defaultItemTimeBlackHole =
+				config.get(ENERGY, "defaultBurnTime", 500,
+						"Default black-hole generator burn time for one matter item",
+						1, Integer.MAX_VALUE).getInt();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleTimings =
+				config.get(ENERGY, "blackHoleTimings",
+						zmaster587.advancedRocketry.api.Configuration.blackHoleTimings,
+						"Matter burn overrides: modid:item[:meta-or-*];ticks")
+						.getStringList();
+		zmaster587.advancedRocketry.api.Configuration.blackHoleAllowUnlistedMatter =
+				config.get(ENERGY, "blackHoleAllowUnlistedMatter", true,
+						"Allow unlisted items to use defaultBurnTime")
+						.getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.gasCollectionMult = config.get(GAS_MINING, "gasMissionMultiplier", 1.0, "Multiplier for the amount of time gas collection missions take").getDouble();
 		zmaster587.advancedRocketry.api.Configuration.asteroidMiningTimeMult = config.get(ASTEROID, "miningMissionTmeMultiplier", 1.0, "Multiplier changing how long a mining mission takes").getDouble();
 		geodeOres = config.get(oreGen, "geodeOres", new String[] {"oreIron", "oreGold", "oreCopper", "oreTin", "oreRedstone"}, "List of oredictionary names of ores allowed to spawn in geodes").getStringList();
@@ -582,6 +648,19 @@ public class AdvancedRocketry {
 		((BlockTile) AdvancedRocketryBlocks.blockMicrowaveReciever).setTopTexture("Advancedrocketry:solar");
 		((BlockTile) AdvancedRocketryBlocks.blockMicrowaveReciever).setFrontTexture("libvulpes:machineGeneric");
 		AdvancedRocketryBlocks.blockMicrowaveReciever.setBlockName("microwaveReciever");
+
+		AdvancedRocketryBlocks.blockBlackHoleGenerator =
+				new BlockMultiblockMachine(TileBlackHoleGenerator.class,
+						GuiHandler.guiId.MODULAR.ordinal())
+						.setBlockName("blackholegenerator")
+						.setCreativeTab(tabAdvRocketry).setHardness(3f);
+		((BlockMultiblockMachine)AdvancedRocketryBlocks.blockBlackHoleGenerator)
+				.setSideTexture("libvulpes:machineGeneric");
+		((BlockMultiblockMachine)AdvancedRocketryBlocks.blockBlackHoleGenerator)
+				.setTopTexture("libvulpes:machineGeneric");
+		((BlockMultiblockMachine)AdvancedRocketryBlocks.blockBlackHoleGenerator)
+				.setFrontTexture("advancedrocketry:MonitorFrontMid",
+						"advancedrocketry:MonitorFrontMid");
 
 		//Arcfurnace
 		AdvancedRocketryBlocks.blockArcFurnace = new BlockMultiblockMachine(TileElectricArcFurnace.class, GuiHandler.guiId.MODULAR.ordinal()).setBlockName("electricArcFurnace").setCreativeTab(tabAdvRocketry).setHardness(3f);
@@ -843,6 +922,9 @@ public class AdvancedRocketry {
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockGravityController, AdvancedRocketryBlocks.blockGravityController.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockDrill, AdvancedRocketryBlocks.blockDrill.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockMicrowaveReciever, AdvancedRocketryBlocks.blockMicrowaveReciever.getUnlocalizedName());
+		GameRegistry.registerBlock(
+				AdvancedRocketryBlocks.blockBlackHoleGenerator,
+				"blackholegenerator");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockLightSource, AdvancedRocketryBlocks.blockLightSource.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockSolarPanel, AdvancedRocketryBlocks.blockSolarPanel.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockSuitWorkStation, AdvancedRocketryBlocks.blockSuitWorkStation.getUnlocalizedName());
@@ -1044,6 +1126,8 @@ public class AdvancedRocketry {
 		GameRegistry.registerTileEntity(TileDataPipe.class, "ARDataPipe");
 		GameRegistry.registerTileEntity(TileDrill.class, "ARDrill");
 		GameRegistry.registerTileEntity(TileMicrowaveReciever.class, "ARMicrowaveReciever");
+		GameRegistry.registerTileEntity(TileBlackHoleGenerator.class,
+				"ARblackholegenerator");
 		GameRegistry.registerTileEntity(TileSuitWorkStation.class, "ARSuitWorkStation");
 		GameRegistry.registerTileEntity(TileRocketLoader.class, "ARRocketLoader");
 		GameRegistry.registerTileEntity(TileRocketUnloader.class, "ARRocketUnloader");
@@ -1134,6 +1218,8 @@ public class AdvancedRocketry {
 
 		proxy.registerRenderers();
 		NetworkRegistry.INSTANCE.registerGuiHandler(this, new GuiHandler());
+		BlackHoleGeneratorRegistration.registerRecipe(
+				AdvancedRocketryBlocks.blockBlackHoleGenerator);
 
 		GameRegistry.addShapelessRecipe(new ItemStack(AdvancedRocketryBlocks.blockBlastBrick,16), new ItemStack(Items.potionitem,1,8195), new ItemStack(Items.potionitem,1,8201), Blocks.brick_block, Blocks.brick_block, Blocks.brick_block, Blocks.brick_block);
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockArcFurnace), "aga","ice", "aba", 'a', Items.netherbrick, 'g', userInterface, 'i', itemIOBoard, 'e',controlCircuitBoard, 'c', AdvancedRocketryBlocks.blockBlastBrick, 'b', "ingotCopper"));
@@ -1428,6 +1514,8 @@ public class AdvancedRocketry {
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileChemicalReactor(), (BlockTile)AdvancedRocketryBlocks.blockChemicalReactor);
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileWarpCore(), (BlockTile)AdvancedRocketryBlocks.blockWarpCore);
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileMicrowaveReciever(), (BlockTile)AdvancedRocketryBlocks.blockMicrowaveReciever);
+		BlackHoleGeneratorRegistration.registerProjector(
+				AdvancedRocketryBlocks.blockBlackHoleGenerator);
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileBiomeScanner(), (BlockTile)AdvancedRocketryBlocks.blockBiomeScanner);
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileAtmosphereTerraformer(), (BlockTile)AdvancedRocketryBlocks.blockAtmosphereTerraformer);
 		((ItemProjector)LibVulpesItems.itemHoloProjector).registerMachine(new TileRailgun(), (BlockTile)AdvancedRocketryBlocks.blockRailgun);
@@ -1968,15 +2056,23 @@ public class AdvancedRocketry {
 			for(StellarBody star : dimCouplingList.stars) {
 				if(DimensionManager.getInstance().getStar(star.getId()) == null)
 					DimensionManager.getInstance().addStar(star);
-				
-				DimensionManager.getInstance().getStar(star.getId()).setName(star.getName());
-				DimensionManager.getInstance().getStar(star.getId()).setPosX(star.getPosX());
-				DimensionManager.getInstance().getStar(star.getId()).setPosY(star.getPosY());
-				DimensionManager.getInstance().getStar(star.getId()).setPosZ(star.getPosZ());
-				DimensionManager.getInstance().getStar(star.getId()).setSize(star.getSize());
-				DimensionManager.getInstance().getStar(star.getId()).setTemperature(star.getTemperature());
-				DimensionManager.getInstance().getStar(star.getId()).subStars = star.subStars;
+
+				StellarBody loadedStar = DimensionManager.getInstance()
+						.getStar(star.getId());
+				loadedStar.setName(star.getName());
+				loadedStar.setPosX(star.getPosX());
+				loadedStar.setPosY(star.getPosY());
+				loadedStar.setPosZ(star.getPosZ());
+				// Size precedes black-hole defaults by design.
+				loadedStar.setSize(star.getSize());
+				loadedStar.setTemperature(star.getTemperature());
+				loadedStar.setBlackHole(star.isBlackHole());
+				if(star.isBlackHole())
+					loadedStar.setBlackHoleProperties(
+							star.getOrCreateBlackHoleProperties());
+				loadedStar.subStars = star.subStars;
 			}
+			StationTargetResolver.getInstance().invalidateCache();
 			
 			for(DimensionProperties properties : dimCouplingList.dims) {
 

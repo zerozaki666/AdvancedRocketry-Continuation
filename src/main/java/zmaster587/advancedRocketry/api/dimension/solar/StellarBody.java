@@ -5,7 +5,10 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 
+import javax.annotation.Nullable;
+
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.util.MathHelper;
@@ -24,6 +27,8 @@ public class StellarBody {
 	float size;
 	public List<StellarBody> subStars;
 	float starSeperation;
+	private boolean blackHole;
+	private BlackHoleProperties blackHoleProperties;
 
 	public StellarBody() {
 		planets = new HashMap<Integer,IDimensionProperties>();
@@ -60,6 +65,57 @@ public class StellarBody {
 
 	public float getMass() {
 		return Math.max(size*size, 0.01F);
+	}
+
+	/**
+	 * Returns the mass used by new simulation and hazard code without changing
+	 * the legacy {@link #getMass()} ABI or its size-squared behavior.
+	 */
+	public double getSimulationMass() {
+		return blackHole && blackHoleProperties != null
+				? blackHoleProperties.getMass() : getMass();
+	}
+
+	public boolean isBlackHole() {
+		return blackHole;
+	}
+
+	public void setBlackHole(boolean blackHole) {
+		this.blackHole = blackHole;
+		if(blackHole) {
+			if(blackHoleProperties == null)
+				blackHoleProperties = BlackHoleProperties.createDefaults(
+						size, id, name);
+		}
+		else
+			blackHoleProperties = null;
+		StationTargetResolver.getInstance().invalidateCache();
+	}
+
+	@Nullable
+	public BlackHoleProperties getBlackHoleProperties() {
+		return blackHole ? blackHoleProperties : null;
+	}
+
+	public BlackHoleProperties getOrCreateBlackHoleProperties() {
+		if(!blackHole)
+			throw new IllegalStateException(
+					"Cannot create black-hole properties for a normal star");
+		if(blackHoleProperties == null)
+			blackHoleProperties = BlackHoleProperties.createDefaults(
+					size, id, name);
+		return blackHoleProperties;
+	}
+
+	public void setBlackHoleProperties(BlackHoleProperties properties) {
+		if(!blackHole)
+			throw new IllegalStateException(
+					"Cannot assign black-hole properties to a normal star");
+		if(properties == null)
+			throw new IllegalArgumentException(
+					"Black-hole properties cannot be null");
+		blackHoleProperties = properties.copy();
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 	
 	public void setSize(float size) {
@@ -135,6 +191,7 @@ public class StellarBody {
 	 */
 	public void setId(int id) {
 		this.id = id;
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 	
 	/**
@@ -209,6 +266,7 @@ public class StellarBody {
 
 	public void setName(String str) {
 		name = str;
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 
 	/**
@@ -227,6 +285,12 @@ public class StellarBody {
 		nbt.setInteger("posZ", posZ);
 		nbt.setFloat("size", size);
 		nbt.setFloat("seperation", starSeperation);
+		nbt.setBoolean("isBlackHole", blackHole);
+		if(blackHole) {
+			NBTTagCompound blackHoleNbt = new NBTTagCompound();
+			getOrCreateBlackHoleProperties().writeToNBT(blackHoleNbt);
+			nbt.setTag("blackHoleData", blackHoleNbt);
+		}
 		
 		NBTTagList list = new NBTTagList();
 		
@@ -254,6 +318,18 @@ public class StellarBody {
 		
 		if(nbt.hasKey("seperation"))
 			starSeperation = nbt.getFloat("seperation");
+
+		// Size must be restored before deterministic legacy defaults are made.
+		blackHole = nbt.hasKey("isBlackHole")
+				&& nbt.getBoolean("isBlackHole");
+		blackHoleProperties = null;
+		if(blackHole) {
+			blackHoleProperties = BlackHoleProperties.createDefaults(
+					size, id, name);
+			if(nbt.hasKey("blackHoleData", NBT.TAG_COMPOUND))
+				blackHoleProperties.readFromNBT(
+						nbt.getCompoundTag("blackHoleData"), id, name);
+		}
 		
 		subStars.clear();
 		if(nbt.hasKey("subStars")) {
@@ -265,5 +341,6 @@ public class StellarBody {
 				subStars.add(star);
 			}
 		}
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 }

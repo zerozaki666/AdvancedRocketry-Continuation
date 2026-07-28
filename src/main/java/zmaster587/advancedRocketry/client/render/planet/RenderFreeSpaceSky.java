@@ -11,9 +11,13 @@ import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.util.ResourceLocation;
+import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
+import zmaster587.advancedRocketry.client.render.blackhole.BlackHoleRenderManager;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
+import zmaster587.advancedRocketry.dimension.sim.SimBodySnapshot;
+import zmaster587.advancedRocketry.dimension.sim.SimBodyType;
 import zmaster587.advancedRocketry.dimension.sim.SimUniverse;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 
@@ -32,14 +36,21 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 		if(player == null)
 			return;
 
-		SimUniverse.getInstance().tick(world.getTotalWorldTime());
+		// In an integrated server this singleton is shared with the logical
+		// server, which owns simulation time. The client must never rewind it.
+		if(!AdvancedRocketry.proxy.isIntegratedServerRunning())
+			SimUniverse.getInstance().tick(world.getTotalWorldTime());
+		BlackHoleRenderManager.INSTANCE.beginFrame(
+				world.getTotalWorldTime(), partialTicks);
 
 		double playerX = player.prevPosX + (player.posX - player.prevPosX)*partialTicks;
 		double playerY = player.prevPosY + (player.posY - player.prevPosY)*partialTicks;
 		double playerZ = player.prevPosZ + (player.posZ - player.prevPosZ)*partialTicks;
 
-		List<SimUniverse.SimBody> bodies = SimUniverse.getInstance().getAllBodies();
-		Collections.sort(bodies, new BodyDistanceComparator(playerX, playerY, playerZ));
+		List<SimBodySnapshot> bodies =
+				SimUniverse.getInstance().getBodySnapshots();
+		Collections.sort(bodies, new BodyDistanceComparator(
+				playerX, playerY, playerZ, partialTicks));
 
 		GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
 		GL11.glPushMatrix();
@@ -57,10 +68,16 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 			GL11.glEnable(GL11.GL_TEXTURE_2D);
 
 			Tessellator tessellator = Tessellator.instance;
-			for(SimUniverse.SimBody body : bodies) {
-				double dx = body.x - playerX;
-				double dy = body.y - playerY;
-				double dz = body.z - playerZ;
+			for(SimBodySnapshot body : bodies) {
+				double bodyX = interpolate(body.getPreviousX(), body.getX(),
+						partialTicks);
+				double bodyY = interpolate(body.getPreviousY(), body.getY(),
+						partialTicks);
+				double bodyZ = interpolate(body.getPreviousZ(), body.getZ(),
+						partialTicks);
+				double dx = bodyX - playerX;
+				double dy = bodyY - playerY;
+				double dz = bodyZ - playerZ;
 				double distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
 				if(distance < 0.001D)
 					continue;
@@ -69,15 +86,18 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 				double renderY = dy/distance*PROJECTION_DISTANCE;
 				double renderZ = dz/distance*PROJECTION_DISTANCE;
 				double renderSize = Math.max(0.035D, Math.min(
-						12D, body.getConfig().getSize()*PROJECTION_DISTANCE/distance));
+						12D, body.getSize()*PROJECTION_DISTANCE/distance));
 
-				if(body.getConfig().isStar()) {
-					String id = body.getConfig().getID();
-					int separator = id.indexOf(':');
-					StellarBody star = separator < 0
-							? null
-							: DimensionManager.getInstance().getStar(
-									Integer.parseInt(id.substring(separator + 1)));
+				if(body.getBodyType() == SimBodyType.STAR
+						|| body.getBodyType()
+								== SimBodyType.BLACK_HOLE) {
+					StellarBody star = getAdvancedRocketryStar(body.getId());
+					if(body.getBodyType() == SimBodyType.BLACK_HOLE
+							&& star != null && star.isBlackHole()) {
+						BlackHoleRenderManager.INSTANCE.queueBillboard(
+								star, renderX, renderY, renderZ, renderSize, 1F);
+						continue;
+					}
 					float[] color = star == null
 							? new float[] {1F, 1F, 1F}
 							: star.getColor();
@@ -86,8 +106,9 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 							renderSize < 0.08D ? FAR_STAR : TextureResources.locationSunNew);
 				}
 				else {
-					DimensionProperties properties = DimensionManager.getInstance()
-							.getDimensionProperties(body.getConfig().getDimensionId());
+					DimensionProperties properties = DimensionManager
+							.getInstance().getDimensionPropertiesExact(
+									body.getDimensionId());
 					if(properties == null)
 						continue;
 					GL11.glColor4f(1F, 1F, 1F, 1F);
@@ -96,10 +117,28 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 
 				drawBillboard(tessellator, renderX, renderY, renderZ, renderSize);
 			}
+			BlackHoleRenderManager.INSTANCE.renderQueued();
 		}
 		finally {
 			GL11.glPopMatrix();
 			GL11.glPopAttrib();
+		}
+	}
+
+	private static double interpolate(double previous, double current,
+			float partialTicks) {
+		return previous + (current-previous)*partialTicks;
+	}
+
+	private static StellarBody getAdvancedRocketryStar(String bodyId) {
+		if(bodyId == null || !bodyId.startsWith("star:"))
+			return null;
+		try {
+			return DimensionManager.getInstance().getStar(
+					Integer.parseInt(bodyId.substring("star:".length())));
+		}
+		catch(NumberFormatException exception) {
+			return null;
 		}
 	}
 
@@ -142,26 +181,32 @@ public class RenderFreeSpaceSky extends RenderPlanetarySky {
 	}
 
 	private static final class BodyDistanceComparator
-			implements Comparator<SimUniverse.SimBody> {
+			implements Comparator<SimBodySnapshot> {
 		private final double x;
 		private final double y;
 		private final double z;
+		private final float partialTicks;
 
-		private BodyDistanceComparator(double x, double y, double z) {
+		private BodyDistanceComparator(double x, double y, double z,
+				float partialTicks) {
 			this.x = x;
 			this.y = y;
 			this.z = z;
+			this.partialTicks = partialTicks;
 		}
 
 		@Override
-		public int compare(SimUniverse.SimBody first, SimUniverse.SimBody second) {
+		public int compare(SimBodySnapshot first, SimBodySnapshot second) {
 			return Double.compare(distanceSquared(second), distanceSquared(first));
 		}
 
-		private double distanceSquared(SimUniverse.SimBody body) {
-			double dx = body.x-x;
-			double dy = body.y-y;
-			double dz = body.z-z;
+		private double distanceSquared(SimBodySnapshot body) {
+			double dx = interpolate(body.getPreviousX(), body.getX(),
+					partialTicks)-x;
+			double dy = interpolate(body.getPreviousY(), body.getY(),
+					partialTicks)-y;
+			double dz = interpolate(body.getPreviousZ(), body.getZ(),
+					partialTicks)-z;
 			return dx*dx + dy*dy + dz*dz;
 		}
 	}

@@ -39,7 +39,9 @@ public class RenderStarUIEntity extends RenderPlanetUIEntity {
 		GL11.glScalef(sizeScale,sizeScale,sizeScale);
 		
 		RenderHelper.setupPlayerFacingMatrix(Minecraft.getMinecraft().thePlayer.getDistanceSqToEntity(entity), 0,-.45,0);
-		Minecraft.getMinecraft().renderEngine.bindTexture(TextureResources.locationSunNew);
+		Minecraft.getMinecraft().renderEngine.bindTexture(body.isBlackHole()
+				? TextureResources.locationBlackHoleIcon
+				: TextureResources.locationSunNew);
 		
 		Tessellator buffer = Tessellator.instance;
 		
@@ -48,7 +50,11 @@ public class RenderStarUIEntity extends RenderPlanetUIEntity {
 		GL11.glDisable(GL11.GL_DEPTH_TEST);
 		OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 0, 0);
 		
-		GL11.glColor3d(body.getColor()[0], body.getColor()[1], body.getColor()[2]);
+		if(body.isBlackHole())
+			GL11.glColor3d(1D, 1D, 1D);
+		else
+			GL11.glColor3d(body.getColor()[0], body.getColor()[1],
+					body.getColor()[2]);
 		//GL11.glColor3ub((byte)(body.getColorRGB8() & 0xff), (byte)((body.getColorRGB8() >>> 8) & 0xff), (byte)((body.getColorRGB8() >>> 16) & 0xff));
 		//GlStateManager.color();
 		

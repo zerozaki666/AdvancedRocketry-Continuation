@@ -307,15 +307,20 @@ public class SpaceObjectManager implements ISpaceObjectManager {
 		//If no dim undergoing transition then nextTransitionTick = -1
 		if((nextStationTransitionTick != -1 && worldTime >= nextStationTransitionTick && spaceStationOrbitMap.get(WARPDIMID) != null) || (nextStationTransitionTick == -1 && spaceStationOrbitMap.get(WARPDIMID) != null && !spaceStationOrbitMap.get(WARPDIMID).isEmpty())) {
 			long newNextTransitionTick = -1;
+			List<ISpaceObject> completedTransitions =
+					new LinkedList<ISpaceObject>();
 			for(ISpaceObject obj : spaceStationOrbitMap.get(WARPDIMID)) {
 				if(obj.getTransitionTime() <= worldTime) {
-					moveStationToBody(obj, obj.getDestOrbitingBody());
-					spaceStationOrbitMap.get(WARPDIMID).remove(obj);
+					completedTransitions.add(obj);
 				}
 				else if(newNextTransitionTick == -1 || obj.getTransitionTime() < newNextTransitionTick)
 					newNextTransitionTick = obj.getTransitionTime();
 			}
 
+			// moveStationToBody removes each object from the warp list exactly
+			// once; doing this after traversal avoids concurrent modification.
+			for(ISpaceObject obj : completedTransitions)
+				moveStationToBody(obj, obj.getDestOrbitingBody());
 			nextStationTransitionTick = newNextTransitionTick;
 		}
 
@@ -327,6 +332,7 @@ public class SpaceObjectManager implements ISpaceObjectManager {
 		spaceStationOrbitMap.clear();
 		temporaryDimensions.clear();
 		nextStationTransitionTick = -1;
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 	
 	/*@SubscribeEvent
@@ -414,8 +420,14 @@ public class SpaceObjectManager implements ISpaceObjectManager {
 
 
 		((DimensionProperties)station.getProperties()).setAtmosphereDensityDirect(0);
-		nextStationTransitionTick = (int)(Configuration.travelTimeMultiplier*timeDelta) + DimensionManager.getWorld(Configuration.spaceDimId).getTotalWorldTime();
-		station.beginTransition(nextStationTransitionTick);
+		long transitionTick = Math.max(0L,
+				(long)(Configuration.travelTimeMultiplier * timeDelta))
+				+ DimensionManager.getWorld(Configuration.spaceDimId)
+						.getTotalWorldTime();
+		station.beginTransition(transitionTick);
+		if(nextStationTransitionTick == -1
+				|| transitionTick < nextStationTransitionTick)
+			nextStationTransitionTick = transitionTick;
 		
 	}
 

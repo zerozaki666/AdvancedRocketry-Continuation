@@ -11,9 +11,10 @@ import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraftforge.common.BiomeManager.BiomeEntry;
 import zmaster587.advancedRocketry.api.AdvancedRocketryBlocks;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
-import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.api.LibVulpesBlocks;
 import zmaster587.libVulpes.inventory.TextureResources;
@@ -75,8 +76,12 @@ public class TileBiomeScanner extends TileMultiPowerConsumer {
 		}
 
 		ISpaceObject spaceObject = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
-		if(suitable && SpaceObjectManager.WARPDIMID != spaceObject.getOrbitingPlanetId()) {
-			DimensionProperties properties = DimensionManager.getInstance().getDimensionProperties(spaceObject.getOrbitingPlanetId());
+		StationTarget target = spaceObject == null ? null
+				: StationTargetResolver.getInstance().resolve(
+						spaceObject.getOrbitingPlanetId());
+		if(suitable && target != null
+				&& target.getKind() == StationTarget.Kind.DIMENSION) {
+			DimensionProperties properties = target.getDimensionProperties();
 			List<ModuleBase> list2 = new LinkedList<ModuleBase>();
 			if(properties.isGasGiant()) {
 				list2.add(new ModuleText(32, 16, LibVulpes.proxy.getLocalizedString("msg.biomescanner.gas"), 0x202020));

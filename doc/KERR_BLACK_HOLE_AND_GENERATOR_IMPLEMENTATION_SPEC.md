@@ -361,13 +361,17 @@ public static final int STAR_ID_OFFSET = 10000;
 
 规则：
 
-- synthetic star ID = `STAR_ID_OFFSET + stellarBody.id`；
+- 首选兼容编码是 `STAR_ID_OFFSET + stellarBody.id`；
+- 若首选编码已被真实 AR/Forge dimension 占用，则使用
+  `Integer.MIN_VALUE + 1 + stellarBody.id` 的可逆备用编码；
 - 该 ID 不是 Forge dimension ID；
-- planet DIMID loader/validator 必须拒绝或显式迁移 `>= STAR_ID_OFFSET` 的真实维度，避免命名空间冲突；
+- 已存在的真实 dimension 永远优先，不拒绝、不迁移、也不丢弃
+  `>= STAR_ID_OFFSET` 的合法世界；外部 Forge dimension 若没有 AR
+  `DimensionProperties` 则 fail closed，不得冒充 star target；
 - **保持** `DimensionManager#getDimensionProperties(int)` 的现有全局契约，不让它承担 star proxy；该方法约有大量普通调用点，并会把未知 ID 回退为 overworld；
 - 新增空间站专用 `StationTargetResolver`，所有 station target 的解析、验证和显示都从这里进入；
 - resolver 返回明确的 `DIMENSION / BLACK_HOLE_STAR / WARP / INVALID`，无效 ID 绝不能回退 overworld；
-- resolver 的 proxy cache 按 star ID 缓存，在 star packet、XML reset 和 world unload 时失效。
+- resolver 的 proxy cache 按 raw target ID 缓存，在 star packet、XML reset 和 world unload 时失效。
 
 建议类型：
 
@@ -379,6 +383,8 @@ public final class StationTarget {
 
 public final class StationTargetResolver {
     public StationTarget resolve(int rawId);
+    public StationTarget resolveCurrentBody(World world, int x, int z);
+    public int getSelectorId(int stellarId);
     public boolean isAllowedDestination(int rawId, EntityPlayerMP actor);
 }
 ```
@@ -386,10 +392,11 @@ public final class StationTargetResolver {
 resolver：
 
 1. 先识别 `WARPDIMID`；
-2. 对 `< STAR_ID_OFFSET` 的 ID 只接受已注册且允许的真实 dimension；
-3. 对 star ID 反查存在的顶级 `StellarBody`；
-4. 只有主星 `isBlackHole()` 才返回 `BLACK_HOLE_STAR`；
-5. normal star、sub-star、越界、溢出与未知 ID 全部返回 `INVALID`。
+2. 优先接受存在 AR `DimensionProperties` 的真实 dimension；
+3. 已由 Forge 注册但没有 AR properties 的 ID 返回 `INVALID`；
+4. 再尝试解码首选或备用 star ID，并反查存在的顶级 `StellarBody`；
+5. 只有主星 `isBlackHole()` 才返回 `BLACK_HOLE_STAR`；
+6. normal star、sub-star、编码冲突、越界、溢出与未知 ID 全部返回 `INVALID`。
 
 `DimensionProperties` 增加：
 
@@ -402,7 +409,7 @@ public StellarBody getStarData();
 
 - `getStar()`：proxy 返回 `getStarData()`；
 - `getPlanetIcon()`：black-hole proxy 返回 `blackhole_icon.png`；
-- station 的 `DimensionProperties#getParentProperties()` 在 `parentPlanet >= STAR_ID_OFFSET` 时调用 `StationTargetResolver`，普通 planet/moon 路径仍调用 `DimensionManager`；
+- station/proxy 的 parent 查询调用 `StationTargetResolver`，普通 planet/moon 路径仍调用 `DimensionManager`；
 - 不把 proxy 加入 `StellarBody.planets`；
 - 不给 proxy 发 `PacketDimInfo`；
 - 不向 Forge 注册 proxy dimension。
@@ -426,7 +433,7 @@ public StellarBody getStarData();
 - synthetic ID 对应存在的顶级黑洞；
 - normal star、sub-black-hole、unknown ID 均拒绝；
 - 发包玩家正在使用该 station/controller 且具备现有交互距离/权限；
-- synthetic namespace 与真实 DIMID 不冲突；
+- selector codec 已确认首选和备用编码均未与真实 DIMID 冲突；
 - target 满足 known/artifact 等玩法要求。
 
 空间站目标/移动路径必须审计：
@@ -1179,11 +1186,13 @@ modid:item[:meta-or-*];ticks
 
 ```text
 burnTicksRemaining: int
+bhGeneratorBurnTotal: int
 ```
 
 - `enabled` 已由父类保存，不重复；
 - `initialCheck` 是 transient；
 - `powerMadeLastTick` 是派生状态，加载后先归零并在首 tick 重算；
+- `bhGeneratorBurnTotal` 保存当前燃料周期总时长，以便 chunk 重载或服务端重启后准确恢复进度；读取时必须校验为至少 `burnTicksRemaining`，旧存档缺失该字段时回退到 `burnTicksRemaining`；
 - 不保存绝对 world deadline；
 - chunk unload 时 burn 暂停；
 - `/time set` 不影响剩余燃烧；

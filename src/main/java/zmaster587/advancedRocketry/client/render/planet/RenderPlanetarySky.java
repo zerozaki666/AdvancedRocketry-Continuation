@@ -9,6 +9,7 @@ import org.lwjgl.opengl.GL11;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.IPlanetaryProvider;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
+import zmaster587.advancedRocketry.client.render.blackhole.BlackHoleRenderManager;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.event.RocketEventHandler;
@@ -168,7 +169,10 @@ public class RenderPlanetarySky extends IRenderHandler {
 		ResourceLocation parentPlanetIcon = null;
 		List<DimensionProperties> children;
 		List<StellarBody> subStars = new LinkedList<StellarBody>();
+		StellarBody primaryStar = null;
 		celestialAngle = mc.theWorld.getCelestialAngle(partialTicks);
+		BlackHoleRenderManager.INSTANCE.beginFrame(
+				world.getTotalWorldTime(), partialTicks);
 
 		Vec3 sunColor;
 		if(mc.theWorld.provider instanceof IPlanetaryProvider) {
@@ -211,9 +215,18 @@ public class RenderPlanetarySky extends IRenderHandler {
 			}
 
 			sunColor = planetaryProvider.getSunColor((int)mc.thePlayer.posX, (int)mc.thePlayer.posZ);
-			sunSize = properties.getStar().getSize();
-			subStars = properties.getStar().getSubStars();
-			starSeperation = properties.getStar().getStarSeperation();
+			primaryStar = properties.getStar();
+			if(primaryStar != null) {
+				sunSize = primaryStar.getSize();
+				subStars = primaryStar.getSubStars();
+				starSeperation = primaryStar.getStarSeperation();
+			}
+			else {
+				// A station may intentionally preserve an invalid synthetic
+				// target for diagnosis.  Render an empty sky until that target
+				// is repaired instead of dereferencing a missing star.
+				sunSize = 0F;
+			}
 			if(world.provider.dimensionId == Configuration.spaceDimId) {
 				isWarp = properties.getParentPlanet() == SpaceObjectManager.WARPDIMID;
 				if(isWarp) {
@@ -261,9 +274,14 @@ public class RenderPlanetarySky extends IRenderHandler {
 			float sunColorFloat[] = properties.getSunColor();
 			
 			sunColor = Vec3.createVectorHelper(sunColorFloat[0], sunColorFloat[1], sunColorFloat[2]);//planetaryProvider.getSunColor(mc.player.getPosition());
-			sunSize = properties.getStar().getSize();
-			subStars = properties.getStar().getSubStars();
-			starSeperation = properties.getStar().getStarSeperation();
+			primaryStar = properties.getStar();
+			if(primaryStar != null) {
+				sunSize = primaryStar.getSize();
+				subStars = primaryStar.getSubStars();
+				starSeperation = primaryStar.getStarSeperation();
+			}
+			else
+				sunSize = 0F;
 		}
 		else {
 			children = new LinkedList<DimensionProperties>();
@@ -470,7 +488,9 @@ public class RenderPlanetarySky extends IRenderHandler {
 		//--------------------------- Draw the suns --------------------
 		if(!isWarp) {
 			//Set sun color and distance
-			drawStar(tessellator1, solarOrbitalDistance, sunSize, (float)sunColor.xCoord, (float)sunColor.yCoord, (float)sunColor.zCoord, multiplier);
+			drawStarOrBlackHole(tessellator1, primaryStar, solarOrbitalDistance,
+					sunSize, (float)sunColor.xCoord, (float)sunColor.yCoord,
+					(float)sunColor.zCoord, multiplier);
 
 			if(subStars != null && !subStars.isEmpty()) {
 				GL11.glPushMatrix();
@@ -482,7 +502,9 @@ public class RenderPlanetarySky extends IRenderHandler {
 					
 					GL11.glRotatef(subStar.getStarSeperation()*AstronomicalBodyHelper.getBodySizeMultiplier(solarOrbitalDistance), 1, 0, 0);
 					float color[] = subStar.getColor();
-					drawStar(tessellator1, solarOrbitalDistance, subStar.getSize(), color[0], color[1], color[2], multiplier);
+					drawStarOrBlackHole(tessellator1, subStar,
+							solarOrbitalDistance, subStar.getSize(), color[0],
+							color[1], color[2], multiplier);
 					GL11.glPopMatrix();
 				}
 				GL11.glPopMatrix();
@@ -648,6 +670,7 @@ public class RenderPlanetarySky extends IRenderHandler {
 		GL11.glEnable(GL11.GL_TEXTURE_2D);
 		GL11.glDepthMask(true);
 
+		BlackHoleRenderManager.INSTANCE.renderQueued();
 		RocketEventHandler.onPostWorldRender(partialTicks);
 	}
 
@@ -806,5 +829,22 @@ public class RenderPlanetarySky extends IRenderHandler {
 		buffer.addVertexWithUV((double)f10, 100.0D, (double)f10, 1.0D, 1.0D);
 		buffer.addVertexWithUV((double)(-f10), 100.0D, (double)f10, 0.0D, 1.0D);
 		buffer.draw();
+	}
+
+	private void drawStarOrBlackHole(
+			Tessellator buffer, StellarBody star, int solarOrbitalDistance,
+			float sunSize, float red, float green, float blue,
+			float multiplier) {
+		if(star != null && star.isBlackHole()) {
+			float halfSize = sunSize*20F
+					*AstronomicalBodyHelper.getBodySizeMultiplier(
+							Math.max(1, solarOrbitalDistance));
+			BlackHoleRenderManager.INSTANCE.queuePlanetary(
+					star, halfSize, Math.min(multiplier*2F, 1F));
+		}
+		else {
+			drawStar(buffer, solarOrbitalDistance, sunSize, red, green, blue,
+					multiplier);
+		}
 	}
 }

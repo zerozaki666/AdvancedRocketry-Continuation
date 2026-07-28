@@ -75,9 +75,9 @@ Java 7/Forge 1.7.10 的实现重写原提交。
 
 ## 兼容性与实现说明
 
-- 联构需要 JDK 8（配套 libVulpes 的 source/target 为 8）；AdvancedRocketry
-  子项目自身的 source/target 仍为 Java 7，且没有使用 lambda、stream 或接口
-  default method。
+- 联构需要 JDK 8；AdvancedRocketry 与配套 libVulpes 的 source/target 均为 8，
+  避免 Gradle 7 在解析 `project(':libVulpes')` 时因 Java variant 不匹配拒绝联构。
+  AdvancedRocketry 源码仍未使用 lambda、stream 或接口 default method。
 - 配套 libVulpes 最低版本提升为 `0.2.10`，用于投影仪字符 API 与延迟注册。
 - 空间站维度配置使用 `spaceStationId`，自由空间使用 `freeSpaceId`；读取旧
   `spaceSpaceId` 拼写时会迁移，但不再生成错误键。
@@ -98,7 +98,8 @@ Java 7/Forge 1.7.10 的实现重写原提交。
 - `git diff --check` 无空白错误。
 - 已扫描新增 Java 与构建源码：没有加入 TerraFirmaCraft、TFRU、Dyson 或新的
   GT6 projector 适配；只保留目标基线原有的通用 GregAPI/GT6 兼容依赖。
-  AdvancedRocketry Java 源中未发现 Java 8 语法。
+  AdvancedRocketry Java 源中未发现 Java 8 语法；构建字节码目标统一为 Java 8，
+  以匹配 libVulpes 的 Gradle variant。
 - 构建已迁移到 Gradle 7.4.2 与
   `com.anatawa12.forge:ForgeGradle:1.2-1.1.1`；受执行环境网络白名单限制，
   wrapper distribution 下载在配置/编译任务启动前被阻断。因此本次环境内无法

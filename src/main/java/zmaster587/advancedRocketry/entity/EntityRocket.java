@@ -1633,7 +1633,8 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			if(side == Side.SERVER) {
 				StationTarget target = StationTargetResolver.getInstance()
 						.resolve(selection);
-				if(player == null || player.ridingEntity != this
+				if(player == null || player.worldObj != worldObj
+						|| !canInteractWithContainer(player)
 						|| target.getKind() != StationTarget.Kind.DIMENSION
 						|| target.getDimensionProperties() == null
 						|| !DimensionManager.getInstance()

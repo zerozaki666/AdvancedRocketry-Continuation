@@ -55,6 +55,9 @@ public class AstronomicalBodyHelper {
 		return (int)result;
 	}
 	public static double getStellarBrightness(StellarBody star, int orbitalDistance) {
+		if(star == null)
+			return 0D;
+
 		//Make all values ratios of Earth normal to get ratio compared to Earth
 		float normalizedStarTemperature = star.getTemperature()/100f;
 		float planetaryOrbitalRadius = orbitalDistance/100f;

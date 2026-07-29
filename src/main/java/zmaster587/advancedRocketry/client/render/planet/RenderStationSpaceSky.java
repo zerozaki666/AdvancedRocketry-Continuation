@@ -21,17 +21,39 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 	private static final double SURFACE_ROTATION_PERIOD_MS = 1000000D;
 	private static final double ATMOSPHERE_ROTATION_PERIOD_MS = 100000D;
 	private static final float PLANET_SURFACE_DISTANCE = 10F;
+	private static final double PLANET_TEXTURE_BASE_TILING = 2D;
 
-	private final int stationPlanetSphereGlList;
+	private final int stationPlanetSurfaceSphereGlList;
+	private final int stationPlanetAtmosphereSphereGlList;
 
 	//Mostly vanilla code
 	//TODO: make usable on other planets
 	public RenderStationSpaceSky() {
 		super();
-		stationPlanetSphereGlList = GLAllocation.generateDisplayLists(1);
-		GL11.glNewList(stationPlanetSphereGlList, GL11.GL_COMPILE);
-		compileUnitSphere();
+		stationPlanetSurfaceSphereGlList =
+				GLAllocation.generateDisplayLists(2);
+		stationPlanetAtmosphereSphereGlList =
+				stationPlanetSurfaceSphereGlList + 1;
+
+		GL11.glNewList(stationPlanetSurfaceSphereGlList, GL11.GL_COMPILE);
+		compileUnitSphere(getPlanetTextureRepeatCount());
 		GL11.glEndList();
+
+		GL11.glNewList(stationPlanetAtmosphereSphereGlList,
+				GL11.GL_COMPILE);
+		compileUnitSphere(1);
+		GL11.glEndList();
+	}
+
+	private static int getPlanetTextureRepeatCount() {
+		double multiplier =
+				Configuration.stationPlanetTextureTilingMultiplier;
+		if(Double.isNaN(multiplier) || Double.isInfinite(multiplier))
+			multiplier = 1D;
+
+		multiplier = Math.max(0.5D, Math.min(16D, multiplier));
+		return Math.max(1,
+				(int)Math.round(PLANET_TEXTURE_BASE_TILING*multiplier));
 	}
 
 	Minecraft mc = Minecraft.getMinecraft();
@@ -78,7 +100,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 			GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ZERO);
 			bindSphereTexture(icon);
 			GL11.glColor4f(1F, 1F, 1F, alphaMultiplier);
-			renderSphere(radius, centerY, surfaceRotation);
+			renderSphere(radius, centerY, surfaceRotation,
+					stationPlanetSurfaceSphereGlList);
 
 			if(isGasgiant) {
 				renderGasGiantAtmosphere(radius, centerY,
@@ -94,7 +117,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 				renderSphere(radius + atmosphereThickness*0.35F,
 						centerY, getRotationDegrees(
 								ATMOSPHERE_ROTATION_PERIOD_MS,
-								rotationSpeed));
+								rotationSpeed),
+						stationPlanetAtmosphereSphereGlList);
 				renderAtmosphereTint(radius, centerY,
 						atmosphereThickness, atmColor[0], atmColor[1],
 						atmColor[2]);
@@ -119,7 +143,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 			renderSphere(radius + atmosphereThickness
 					*(i + 1)/(layerCount*2F), centerY,
 					getRotationDegrees(ATMOSPHERE_ROTATION_PERIOD_MS,
-							layerSpeed));
+							layerSpeed),
+					stationPlanetAtmosphereSphereGlList);
 		}
 	}
 
@@ -133,7 +158,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 		int layerCount = 5;
 		for(int i = 0; i < layerCount; i++) {
 			renderSphere(radius + atmosphereThickness
-					*(i + 1)/layerCount, centerY, 0D);
+					*(i + 1)/layerCount, centerY, 0D,
+					stationPlanetAtmosphereSphereGlList);
 		}
 		GL11.glEnable(GL11.GL_TEXTURE_2D);
 	}
@@ -151,14 +177,14 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 	}
 
 	private void renderSphere(float radius, double centerY,
-			double rotationDegrees) {
+			double rotationDegrees, int sphereGlList) {
 		GL11.glPushMatrix();
 		GL11.glTranslated(0D, centerY, 0D);
 		// Keep the UV poles out of the center of the view.
 		GL11.glRotated(90D, 1D, 0D, 0D);
 		GL11.glRotated(rotationDegrees, 0D, 1D, 0D);
 		GL11.glScalef(radius, radius, radius);
-		GL11.glCallList(stationPlanetSphereGlList);
+		GL11.glCallList(sphereGlList);
 		GL11.glPopMatrix();
 	}
 
@@ -172,7 +198,7 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 		return (cycles - Math.floor(cycles))*360D;
 	}
 
-	private static void compileUnitSphere() {
+	private static void compileUnitSphere(int textureRepeats) {
 		GL11.glBegin(GL11.GL_QUADS);
 		for(int latitude = 0;
 				latitude < SPHERE_LATITUDE_SEGMENTS; latitude++) {
@@ -180,9 +206,10 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 					+ Math.PI*latitude/SPHERE_LATITUDE_SEGMENTS;
 			double latitude1 = -Math.PI/2D
 					+ Math.PI*(latitude + 1)/SPHERE_LATITUDE_SEGMENTS;
-			double v0 = (double)latitude/SPHERE_LATITUDE_SEGMENTS;
-			double v1 = (double)(latitude + 1)
+			double v0 = (double)textureRepeats*latitude
 					/SPHERE_LATITUDE_SEGMENTS;
+			double v1 = (double)(latitude + 1)
+					*textureRepeats/SPHERE_LATITUDE_SEGMENTS;
 
 			for(int longitude = 0;
 					longitude < SPHERE_LONGITUDE_SEGMENTS; longitude++) {
@@ -192,10 +219,10 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 				double longitude1 = -Math.PI
 						+ Math.PI*2D*(longitude + 1)
 								/SPHERE_LONGITUDE_SEGMENTS;
-				double u0 = (double)longitude
+				double u0 = (double)textureRepeats*longitude
 						/SPHERE_LONGITUDE_SEGMENTS;
 				double u1 = (double)(longitude + 1)
-						/SPHERE_LONGITUDE_SEGMENTS;
+						*textureRepeats/SPHERE_LONGITUDE_SEGMENTS;
 
 				addSphereVertex(latitude0, longitude0, u0, v0);
 				addSphereVertex(latitude1, longitude0, u0, v1);

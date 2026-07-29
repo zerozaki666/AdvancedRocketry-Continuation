@@ -381,6 +381,10 @@ public class AdvancedRocketry {
 				config.get(CLIENT, "stationPlanetRotationSpeedMultiplier", 1D,
 						"Multiplier for the rotation speed of the planet rendered below space stations; 1 is one revolution per 1000 seconds and 0 stops rotation",
 						0D, 100D).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.stationPlanetTextureTilingMultiplier =
+				config.get(CLIENT, "stationPlanetTextureTilingMultiplier", 1D,
+						"Multiplier for the default 2x2 tiling of the LEO planet surface texture rendered below space stations; the result is rounded to the nearest whole repeat and 0.5 restores the previous 1x1 mapping",
+						0.5D, 16D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.spaceSkyOverride = config.get(CLIENT, "SpaceSkyOverride", true, "If true, AR will render the simulated universe in the free-space dimension").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.maxSpaceRocketSpeed = config.get(Configuration.CATEGORY_GENERAL, "maxSpaceRocketSpeed", 1.0D, "Maximum vector speed of a manually flown rocket in free space", 0.05D, 10.0D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.blackHoleFreeSpaceInteraction =

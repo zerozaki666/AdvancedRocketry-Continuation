@@ -144,6 +144,7 @@ public class Configuration {
 	public static boolean stationSkyOverride;
 	public static double stationPlanetSphereScaleMultiplier = 1D;
 	public static double stationPlanetRotationSpeedMultiplier = 1D;
+	public static double stationPlanetTextureTilingMultiplier = 1D;
 	public static boolean spaceSkyOverride;
 	public static double maxSpaceRocketSpeed;
 

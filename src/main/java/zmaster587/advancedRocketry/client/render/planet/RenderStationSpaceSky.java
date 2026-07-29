@@ -2,25 +2,36 @@ package zmaster587.advancedRocketry.client.render.planet;
 
 import org.lwjgl.opengl.GL11;
 
+import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
-import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
 import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
-import zmaster587.libVulpes.render.RenderHelper;
 import zmaster587.libVulpes.util.Vector3F;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.GLAllocation;
 import net.minecraft.client.renderer.Tessellator;
-import net.minecraft.util.MathHelper;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.ForgeDirection;
 
 public class RenderStationSpaceSky extends RenderPlanetarySky {
 
+	private static final int SPHERE_LONGITUDE_SEGMENTS = 64;
+	private static final int SPHERE_LATITUDE_SEGMENTS = 32;
+	private static final double SURFACE_ROTATION_PERIOD_MS = 1000000D;
+	private static final double ATMOSPHERE_ROTATION_PERIOD_MS = 100000D;
+	private static final float PLANET_SURFACE_DISTANCE = 10F;
+
+	private final int stationPlanetSphereGlList;
+
 	//Mostly vanilla code
 	//TODO: make usable on other planets
 	public RenderStationSpaceSky() {
 		super();
+		stationPlanetSphereGlList = GLAllocation.generateDisplayLists(1);
+		GL11.glNewList(stationPlanetSphereGlList, GL11.GL_COMPILE);
+		compileUnitSphere();
+		GL11.glEndList();
 	}
 
 	Minecraft mc = Minecraft.getMinecraft();
@@ -34,149 +45,177 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 			return;
 
 		planetOrbitalDistance = object.getOrbitalDistance();
+		if(planetOrbitalDistance <= 0F)
+			return;
+
+		float radius = (float)(66F
+				*AstronomicalBodyHelper.getBodySizeMultiplier(
+						planetOrbitalDistance)
+				*Configuration.stationPlanetSphereScaleMultiplier);
+		if(radius <= 0F || Float.isInfinite(radius) || Float.isNaN(radius))
+			return;
+
+		// Keep the nearest surface at the legacy plane's Y position while
+		// ensuring the camera remains outside the sphere at every scale.
+		double centerY = -PLANET_SURFACE_DISTANCE - radius;
+		double rotationSpeed =
+				Configuration.stationPlanetRotationSpeedMultiplier;
+		double surfaceRotation = getRotationDegrees(
+				SURFACE_ROTATION_PERIOD_MS, rotationSpeed);
+		float atmosphereThickness = Math.min(4F, radius*0.05F);
 
 		GL11.glPushMatrix();
-		//GL11.glDisable(GL11.GL_BLEND);
-
 		GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
-		GL11.glDisable(GL11.GL_FOG);
-
-		//GL11.glDisable(GL11.GL_LIGHTING);
-
-		GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ZERO);
-		mc.renderEngine.bindTexture(icon);
-
-		GL11.glTexParameterf(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
-		GL11.glTexParameterf(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
-		//int k = mc.theWorld.getMoonPhase();
-		//int l = k % 4;
-		//int i1 = k / 4 % 2;
-
-		//Set planet Orbiting distance; size
-		float f10 = 66f*AstronomicalBodyHelper.getBodySizeMultiplier(planetOrbitalDistance);
-
-		float Xoffset = (float)((System.currentTimeMillis()/1000000d % 1));
-
-		float f14 = 1f + Xoffset;
-		float f15 = 0f + Xoffset;
-		float f16 = f15;
-		float f17 = f14;
-
-		//TODO: draw sky planets
-
-		tessellator1.startDrawingQuads();
-
-		tessellator1.setColorRGBA_F(1f, 1f, 1f, alphaMultiplier);
-
-		tessellator1.addVertexWithUV((double)(-f10), -10.0D, (double)f10, (double)f16, (double)f17);
-		tessellator1.addVertexWithUV((double)f10, -10.0D, (double)f10, (double)f14, (double)f17);
-		tessellator1.addVertexWithUV((double)f10, -10.0D, (double)(-f10), (double)f14, (double)f15);
-		tessellator1.addVertexWithUV((double)(-f10), -10.0D, (double)(-f10), (double)f16, (double)f15);
-
-
-
-		tessellator1.draw();
-		GL11.glPopAttrib();
-
-		//Draw atmosphere if applicable
-		if(isGasgiant) {
-			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-			//GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
-
-			tessellator1.startDrawingQuads();
-			mc.renderEngine.bindTexture(DimensionProperties.getAtmosphereLEOResource());
-			double dist = -5D - 4*(planetOrbitalDistance)/200D;
-			double scalingMult = 1D - 0.9*(planetOrbitalDistance)/200D;
-
-			int maxAmt = 6;
-			float lng = (float) (Minecraft.getSystemTime()/100000d % 1);
-			for(int i = 0; i < maxAmt; i++) {
-				tessellator1.setColorRGBA_F(0.05f*(maxAmt-i/6f), .4f*(i/6f), 1f, 0.4f);
-
-				//IDK it looks pretty
-				Xoffset = lng*(i-(maxAmt/4f));
-				float Yoffset = -lng*i;
-
-				f14 = i + Yoffset;
-				f15 = 0f + Yoffset;
-				f16 = 0f + Xoffset;
-				f17 = i + Xoffset;
-
-
-
-				RenderHelper.renderTopFaceWithUV(tessellator1, -10D + i*scalingMult, -f10, -f10, 0, 0, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, -10D+ i*scalingMult, 0, 0, f10, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, -10D+ i*scalingMult, -f10, 0, 0, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, -10D+ i*scalingMult, 0, -f10, f10, 0, f14, f15, f16, f17);
-			}
-
-			tessellator1.draw();
-
-
-			GL11.glDisable(GL11.GL_TEXTURE_2D);
-			//GL11.glDisable(GL11.GL_BLEND);
-			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-			tessellator1.startDrawingQuads();
-			tessellator1.setColorRGBA_F(0.5f,0.5f,1, 0.08f);
-
-
-			for(int i = 0; i < 5 ; i++) {
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, -f10, -f10, 0, 0, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, 0, 0, f10, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, -f10, 0, 0, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, 0, -f10, f10, 0, f14, f15, f16, f17);
-			}
-			tessellator1.draw();
+		try {
+			GL11.glDisable(GL11.GL_FOG);
+			GL11.glDisable(GL11.GL_LIGHTING);
 			GL11.glEnable(GL11.GL_TEXTURE_2D);
-		}
-		else if(hasAtmosphere) {
-			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
-			//GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ONE);
+			GL11.glEnable(GL11.GL_BLEND);
+			GL11.glEnable(GL11.GL_CULL_FACE);
+			GL11.glCullFace(GL11.GL_BACK);
+			GL11.glFrontFace(GL11.GL_CCW);
 
-			tessellator1.startDrawingQuads();
-			mc.renderEngine.bindTexture(DimensionProperties.getAtmosphereLEOResource());
-			tessellator1.setColorRGBA_F(1f, 1f, 1f, .8f);
+			GL11.glBlendFunc(GL11.GL_ONE, GL11.GL_ZERO);
+			bindSphereTexture(icon);
+			GL11.glColor4f(1F, 1F, 1F, alphaMultiplier);
+			renderSphere(radius, centerY, surfaceRotation);
 
-			Xoffset = (float)((System.currentTimeMillis()/100000d % 1));
-
-			f14 = 1f + Xoffset;
-			f15 = 0f + Xoffset;
-			f16 = f15;
-			f17 = f14;
-
-			RenderHelper.renderTopFaceWithUV(tessellator1, -10D, -f10, -f10, 0, 0, f14, f15, f16, f17);
-			RenderHelper.renderTopFaceWithUV(tessellator1, -10D, 0, 0, f10, f10, f14, f15, f16, f17);
-			RenderHelper.renderTopFaceWithUV(tessellator1, -10D, -f10, 0, 0, f10, f14, f15, f16, f17);
-			RenderHelper.renderTopFaceWithUV(tessellator1, -10D, 0, -f10, f10, 0, f14, f15, f16, f17);
-
-			tessellator1.draw();
-
-
-			GL11.glDisable(GL11.GL_TEXTURE_2D);
-			//GL11.glDisable(GL11.GL_BLEND);
-			GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA);
-
-			tessellator1.startDrawingQuads();
-			tessellator1.setColorRGBA_F(atmColor[0], atmColor[1], atmColor[2], 0.08f);
-
-			double dist = -5D - 4*(planetOrbitalDistance)/200D;
-			double scalingMult = 1D - 0.9*(planetOrbitalDistance)/200D;
-			for(int i = 0; i < 5 ; i++) {
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, -f10, -f10, 0, 0, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, 0, 0, f10, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, -f10, 0, 0, f10, f14, f15, f16, f17);
-				RenderHelper.renderTopFaceWithUV(tessellator1, dist + i*scalingMult, 0, -f10, f10, 0, f14, f15, f16, f17);
+			if(isGasgiant) {
+				renderGasGiantAtmosphere(radius, centerY,
+						atmosphereThickness, rotationSpeed);
+				renderAtmosphereTint(radius, centerY,
+						atmosphereThickness, 0.5F, 0.5F, 1F);
 			}
-			tessellator1.draw();
-			GL11.glEnable(GL11.GL_TEXTURE_2D);
+			else if(hasAtmosphere) {
+				GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+				bindSphereTexture(
+						DimensionProperties.getAtmosphereLEOResource());
+				GL11.glColor4f(1F, 1F, 1F, 0.8F);
+				renderSphere(radius + atmosphereThickness*0.35F,
+						centerY, getRotationDegrees(
+								ATMOSPHERE_ROTATION_PERIOD_MS,
+								rotationSpeed));
+				renderAtmosphereTint(radius, centerY,
+						atmosphereThickness, atmColor[0], atmColor[1],
+						atmColor[2]);
+			}
 		}
+		finally {
+			GL11.glPopAttrib();
+			GL11.glPopMatrix();
+		}
+	}
 
+	private void renderGasGiantAtmosphere(float radius, double centerY,
+			float atmosphereThickness, double rotationSpeed) {
+		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
+		bindSphereTexture(DimensionProperties.getAtmosphereLEOResource());
 
-		tessellator1.setColorRGBA_F(1f,1f,1f,1f);
-		GL11.glEnable(GL11.GL_FOG);
-		//GL11.glEnable(GL11.GL_LIGHTING);
+		int layerCount = 6;
+		for(int i = 0; i < layerCount; i++) {
+			GL11.glColor4f(0.05F*(layerCount-i/6F),
+					0.4F*(i/6F), 1F, 0.4F);
+			double layerSpeed = rotationSpeed*(i-layerCount/4D);
+			renderSphere(radius + atmosphereThickness
+					*(i + 1)/(layerCount*2F), centerY,
+					getRotationDegrees(ATMOSPHERE_ROTATION_PERIOD_MS,
+							layerSpeed));
+		}
+	}
+
+	private void renderAtmosphereTint(float radius, double centerY,
+			float atmosphereThickness, float red, float green, float blue) {
+		GL11.glDisable(GL11.GL_TEXTURE_2D);
+		GL11.glBlendFunc(GL11.GL_SRC_ALPHA,
+				GL11.GL_ONE_MINUS_SRC_ALPHA);
+		GL11.glColor4f(red, green, blue, 0.08F);
+
+		int layerCount = 5;
+		for(int i = 0; i < layerCount; i++) {
+			renderSphere(radius + atmosphereThickness
+					*(i + 1)/layerCount, centerY, 0D);
+		}
+		GL11.glEnable(GL11.GL_TEXTURE_2D);
+	}
+
+	private void bindSphereTexture(ResourceLocation texture) {
+		mc.renderEngine.bindTexture(texture);
+		GL11.glTexParameteri(GL11.GL_TEXTURE_2D,
+				GL11.GL_TEXTURE_MAG_FILTER, GL11.GL_LINEAR);
+		GL11.glTexParameteri(GL11.GL_TEXTURE_2D,
+				GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR);
+		GL11.glTexParameteri(GL11.GL_TEXTURE_2D,
+				GL11.GL_TEXTURE_WRAP_S, GL11.GL_REPEAT);
+		GL11.glTexParameteri(GL11.GL_TEXTURE_2D,
+				GL11.GL_TEXTURE_WRAP_T, GL11.GL_REPEAT);
+	}
+
+	private void renderSphere(float radius, double centerY,
+			double rotationDegrees) {
+		GL11.glPushMatrix();
+		GL11.glTranslated(0D, centerY, 0D);
+		// Keep the UV poles out of the center of the view.
+		GL11.glRotated(90D, 1D, 0D, 0D);
+		GL11.glRotated(rotationDegrees, 0D, 1D, 0D);
+		GL11.glScalef(radius, radius, radius);
+		GL11.glCallList(stationPlanetSphereGlList);
 		GL11.glPopMatrix();
+	}
+
+	private static double getRotationDegrees(double periodMs,
+			double speedMultiplier) {
+		if(speedMultiplier == 0D || Double.isNaN(speedMultiplier)
+				|| Double.isInfinite(speedMultiplier))
+			return 0D;
+
+		double cycles = Minecraft.getSystemTime()*speedMultiplier/periodMs;
+		return (cycles - Math.floor(cycles))*360D;
+	}
+
+	private static void compileUnitSphere() {
+		GL11.glBegin(GL11.GL_QUADS);
+		for(int latitude = 0;
+				latitude < SPHERE_LATITUDE_SEGMENTS; latitude++) {
+			double latitude0 = -Math.PI/2D
+					+ Math.PI*latitude/SPHERE_LATITUDE_SEGMENTS;
+			double latitude1 = -Math.PI/2D
+					+ Math.PI*(latitude + 1)/SPHERE_LATITUDE_SEGMENTS;
+			double v0 = (double)latitude/SPHERE_LATITUDE_SEGMENTS;
+			double v1 = (double)(latitude + 1)
+					/SPHERE_LATITUDE_SEGMENTS;
+
+			for(int longitude = 0;
+					longitude < SPHERE_LONGITUDE_SEGMENTS; longitude++) {
+				double longitude0 = -Math.PI
+						+ Math.PI*2D*longitude
+								/SPHERE_LONGITUDE_SEGMENTS;
+				double longitude1 = -Math.PI
+						+ Math.PI*2D*(longitude + 1)
+								/SPHERE_LONGITUDE_SEGMENTS;
+				double u0 = (double)longitude
+						/SPHERE_LONGITUDE_SEGMENTS;
+				double u1 = (double)(longitude + 1)
+						/SPHERE_LONGITUDE_SEGMENTS;
+
+				addSphereVertex(latitude0, longitude0, u0, v0);
+				addSphereVertex(latitude1, longitude0, u0, v1);
+				addSphereVertex(latitude1, longitude1, u1, v1);
+				addSphereVertex(latitude0, longitude1, u1, v0);
+			}
+		}
+		GL11.glEnd();
+	}
+
+	private static void addSphereVertex(double latitude, double longitude,
+			double u, double v) {
+		double cosLatitude = Math.cos(latitude);
+		double x = cosLatitude*Math.cos(longitude);
+		double y = Math.sin(latitude);
+		double z = cosLatitude*Math.sin(longitude);
+
+		GL11.glNormal3d(x, y, z);
+		GL11.glTexCoord2d(u, v);
+		GL11.glVertex3d(x, y, z);
 	}
 
 	@Override

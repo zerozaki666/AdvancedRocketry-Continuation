@@ -373,6 +373,14 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.oxygenVentConsumptionMult = config.get(Configuration.CATEGORY_GENERAL, "oxygenVentConsumptionMultiplier", 1f, "Multiplier on how much O2 an oxygen vent consumes per tick").getDouble();
 
 		zmaster587.advancedRocketry.api.Configuration.stationSkyOverride = config.get(CLIENT, "StationSkyOverride", true, "If true, AR will use a custom skybox on space stations").getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.stationPlanetSphereScaleMultiplier =
+				config.get(CLIENT, "stationPlanetSphereScaleMultiplier", 1D,
+						"Multiplier for the apparent size of the planet rendered below space stations",
+						0.01D, 100D).getDouble();
+		zmaster587.advancedRocketry.api.Configuration.stationPlanetRotationSpeedMultiplier =
+				config.get(CLIENT, "stationPlanetRotationSpeedMultiplier", 1D,
+						"Multiplier for the rotation speed of the planet rendered below space stations; 1 is one revolution per 1000 seconds and 0 stops rotation",
+						0D, 100D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.spaceSkyOverride = config.get(CLIENT, "SpaceSkyOverride", true, "If true, AR will render the simulated universe in the free-space dimension").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.maxSpaceRocketSpeed = config.get(Configuration.CATEGORY_GENERAL, "maxSpaceRocketSpeed", 1.0D, "Maximum vector speed of a manually flown rocket in free space", 0.05D, 10.0D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.blackHoleFreeSpaceInteraction =

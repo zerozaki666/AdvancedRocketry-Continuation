@@ -39,7 +39,6 @@ import zmaster587.libVulpes.render.RenderHelper;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.FontRenderer;
 import net.minecraft.client.gui.GuiButton;
-import net.minecraft.client.gui.ScaledResolution;
 import net.minecraft.client.gui.inventory.GuiContainer;
 import net.minecraft.client.renderer.Tessellator;
 import net.minecraft.inventory.Container;
@@ -391,7 +390,10 @@ public class ModulePlanetSelector extends ModuleContainerPan implements IButtonI
 	@SideOnly(Side.CLIENT)
 	public List<GuiButton> addButtons(int x, int y) {
 
-		centerOnScaledScreen();
+		this.screenSizeX = Minecraft.getMinecraft().displayWidth;
+		this.screenSizeY = Minecraft.getMinecraft().displayHeight;
+
+		setOffset2(internalOffsetX - Minecraft.getMinecraft().displayWidth/4, internalOffsetY - Minecraft.getMinecraft().displayHeight /4);
 
 		List <GuiButton> list = super.addButtons(x, y);
 
@@ -440,7 +442,8 @@ public class ModulePlanetSelector extends ModuleContainerPan implements IButtonI
 
 		int x = currentPosX - size/2, y = currentPosY - size/2;
 
-		updateScaledScreenSize();
+		this.screenSizeX = Minecraft.getMinecraft().displayWidth;
+		this.screenSizeY = Minecraft.getMinecraft().displayHeight;
 		for(ModuleBase module : this.planetList) {
 			for(GuiButton module2 : module.addButtons(currentPosX, currentPosY)) {
 				if(module2.xPosition > 128 + offsetX || clickablePlanetList == null || !clickablePlanetList.isEnabled())
@@ -467,7 +470,7 @@ public class ModulePlanetSelector extends ModuleContainerPan implements IButtonI
 			zoom = 1;
 			zoomToGo = 1;
 			redrawSystem();
-			centerOnScaledScreen();
+			setOffset2(internalOffsetX - Minecraft.getMinecraft().displayWidth/4 , internalOffsetY - Minecraft.getMinecraft().displayHeight /4);
 			//redrawSystem();
 
 			//selectedSystem = -1;
@@ -477,22 +480,6 @@ public class ModulePlanetSelector extends ModuleContainerPan implements IButtonI
 			hostTile.onSystemFocusChanged(this);
 			refreshSideBar(true, selectedSystem);
 		}
-	}
-
-	@SideOnly(Side.CLIENT)
-	private void updateScaledScreenSize() {
-		Minecraft minecraft = Minecraft.getMinecraft();
-		ScaledResolution resolution = new ScaledResolution(minecraft,
-				minecraft.displayWidth, minecraft.displayHeight);
-		this.screenSizeX = resolution.getScaledWidth();
-		this.screenSizeY = resolution.getScaledHeight();
-	}
-
-	@SideOnly(Side.CLIENT)
-	private void centerOnScaledScreen() {
-		updateScaledScreenSize();
-		setOffset2(internalOffsetX - screenSizeX/2,
-				internalOffsetY - screenSizeY/2);
 	}
 
 	@Override

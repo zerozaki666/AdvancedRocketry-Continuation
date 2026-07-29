@@ -19,6 +19,7 @@ import zmaster587.advancedRocketry.api.IAtmosphere;
 import zmaster587.advancedRocketry.api.event.AtmosphereEvent;
 import zmaster587.advancedRocketry.api.util.IBlobHandler;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
+import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.network.PacketAtmSync;
 import zmaster587.advancedRocketry.util.AtmosphereBlob;
 import zmaster587.advancedRocketry.util.SealableBlockHandler;
@@ -302,7 +303,7 @@ public class AtmosphereHandler {
 			}
 
 
-			return DimensionManager.getInstance().getDimensionProperties(dimId).getAtmosphere();
+			return getDefaultAtmosphereType();
 		}
 
 		return AtmosphereType.AIR;
@@ -322,7 +323,7 @@ public class AtmosphereHandler {
 				}
 			}
 
-			return DimensionManager.getInstance().getDimensionProperties(dimId).getAtmosphere();
+			return getDefaultAtmosphereType();
 		}
 		return AtmosphereType.AIR;
 	}
@@ -332,7 +333,23 @@ public class AtmosphereHandler {
 	 * @return the default atmosphere type used by this planet
 	 */
 	public IAtmosphere getDefaultAtmosphereType() {
-		return DimensionManager.getInstance().getDimensionProperties(dimId).getAtmosphere();
+		// Space dimensions are deliberately not stored in the normal
+		// dimension list, but still need their vacuum atmosphere.
+		if(dimId == Configuration.spaceDimId
+				|| dimId == Configuration.freeSpaceDimId
+				|| dimId == Integer.MIN_VALUE)
+			return DimensionManager.getInstance().getDimensionProperties(dimId)
+					.getAtmosphere();
+
+		DimensionProperties properties = DimensionManager.getInstance()
+				.getDimensionPropertiesExact(dimId);
+		if(properties != null)
+			return properties.getAtmosphere();
+
+		// getDimensionProperties() has a legacy fallback to the saved
+		// overworld properties.  Applying that fallback here makes every
+		// unmanaged mod dimension inherit changes to Earth's atmosphere.
+		return AtmosphereType.AIR;
 	}
 
 	/**
@@ -365,7 +382,7 @@ public class AtmosphereHandler {
 					return true;
 				}
 			}
-			return DimensionManager.getInstance().getDimensionProperties(dimId).getAtmosphere().isImmune(entity);
+			return getDefaultAtmosphereType().isImmune(entity);
 		}
 
 		return true;

@@ -42,6 +42,22 @@ jar {
 
 repositories {
     mavenCentral()
+    exclusiveContent {
+        forRepository {
+            maven {
+                name = 'industrialcraft-2'
+                url = uri('https://maven.ic2.player.to/')
+
+                // IC2 publishes artifacts without Maven POM metadata.
+                metadataSources {
+                    artifact()
+                }
+            }
+        }
+        filter {
+            includeGroup('net.industrial-craft')
+        }
+    }
     flatDir {
         dirs 'libs'
     }

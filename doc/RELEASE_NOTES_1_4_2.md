@@ -66,13 +66,35 @@
   或 `advancedVFX=false` 时会安全降级，并在日志中输出带
   `[BlackHoleRenderer]` 的原因。
 
+### 写实大气渲染
+
+- 以球形指数大气、Rayleigh/Mie 单次散射、光学深度 LUT 和有界 raymarch
+  取代旧的五层半透明球壳与平面辉光。该效果是面向游戏实时渲染的
+  **physically based approximation**，不代表科研级大气模拟精度。
+- 空间视角现在会根据主恒星方向显示明暗交界、背光边缘辉光与地表遮挡；地表和
+  近地平线视角会连续呈现昼夜、暮光、星空可见度和随高度变化的大气柱。
+- 现有 `planetDefs` 的 `atmosphereDensity`、`skyColor`、`fogColor` 和气态巨行星
+  标记继续驱动默认视觉，同时可用可选 `atmosphereRendering` 字段覆盖散射、
+  吸收、尺度高度、行星/大气半径、太阳强度及云层参数。
+- 新增 `AUTO`、`FAST`、`HIGH`、`LEGACY` 和 `OFF` 大气渲染模式；旧存档、未提供
+  新字段的星球和玩法侧大气压力语义保持不变。
+- GLSL 1.20 或 LUT 不可用时会使用连续球壳 fallback；检测到外部 shader program
+  时会安全跳过内部 pass，避免破坏 shader pack、HUD 或后续世界渲染状态。
+
 ## 空间站行星渲染
 
 - 将空间站下方的 LEO 平面改为 64×32 细分球体，并将大气层同步改为球壳。
 - 星球视觉大小继续由原有轨道高度驱动；Orientation Controller 与 Altitude
-  Controller 的控制语义保持不变。
+  Controller 的目标值语义保持不变。
 - 新增星球视觉倍率、自转速度和地表贴图 tiling 配置。默认自转周期约 1000 秒，
-  LEO 地表默认使用 2×2 tiling。
+  LEO 地表默认使用 2×2 tiling；星球视觉倍率默认值现为 `1.5`。
+- Altitude Controller 在 Target Altitude 下方新增 Max Altitude Change Rate
+  slider；最低档 `1×` 与旧版速度完全一致，最高可调至旧版速度的 `10×`，选择值
+  会随控制器存档并同步至服务端。
+- 修复高轨目标区间中原有步长归零或变为负值、导致控制器停滞或反向移动的问题；
+  不高于 `38100 km` 时的 `1×` 步长计算保持不变。
+- 修复较大星球视觉倍率配合低轨道高度时，相机会进入大气代理球并触发近/远裁剪，
+  从而在俯视画面中形成凹洞/开口的问题；正常高度与默认倍率下的既有构图保持不变。
 - Earth 与 Moon 的 LEO 贴图升级为高分辨率资源。
 
 ## 修复与兼容性
@@ -98,6 +120,13 @@
 | Client | `blackHoleMaxShaderBodies` | `2` | 单次 celestial pass 的 shader 黑洞上限 |
 | Performance | `blackHoleShaderStepsFast` | `16` | FAST 的有界近似步数 |
 | Performance | `blackHoleShaderStepsHigh` | `32` | HIGH 的有界近似步数 |
+| Client | `atmosphereRenderMode` | `AUTO` | `AUTO`、`FAST`、`HIGH`、`LEGACY` 或 `OFF` |
+| Client | `atmosphereMaxShaderBodies` | `2` | 单次 celestial pass 的 raymarched 大气上限 |
+| Client | `atmosphereMinShaderRadiusPixels` | `6` | 启用 atmosphere shader 的最小投影半径 |
+| Client | `atmosphereEnableCloudLayer` | `true` | profile 允许时独立渲染云层 |
+| Client | `atmosphereDebugView` | `NONE` | 大气诊断输出；正常游玩保持 `NONE` |
+| Performance | `atmosphereOpticalDepthLutWidth` | `128` | CPU 光学深度 LUT 宽度 |
+| Performance | `atmosphereOpticalDepthLutHeight` | `64` | CPU 光学深度 LUT 高度 |
 | General | `blackHoleFreeSpaceInteraction` | `VISUAL_ONLY` | 自由空间危险行为；`CAPTURE` 为破坏性 opt-in |
 | General | `blackHoleGravityConstant` | `0.01` | 自由空间玩法引力系数 |
 | General | `blackHoleMaxAcceleration` | `0.05` | 每 tick 最大黑洞加速度 |
@@ -107,7 +136,7 @@
 | Energy | `defaultBurnTime` | `500` | 未单独配置的物质燃料燃烧 tick |
 | Energy | `blackHoleTimings` | 常见方块各 `1` tick | `modid:item[:meta-or-*];ticks` 覆盖列表 |
 | Energy | `blackHoleAllowUnlistedMatter` | `true` | 是否允许未列出的物品使用 `defaultBurnTime` |
-| Client | `stationPlanetSphereScaleMultiplier` | `1.0` | 空间站下方星球的视觉大小倍率 |
+| Client | `stationPlanetSphereScaleMultiplier` | `1.5` | 空间站下方星球的视觉大小倍率 |
 | Client | `stationPlanetRotationSpeedMultiplier` | `1.0` | 星球自转倍率；`0` 停止自转 |
 | Client | `stationPlanetTextureTilingMultiplier` | `1.0` | 默认 2×2 tiling 的倍率；`0.5` 恢复 1×1 |
 
@@ -117,9 +146,12 @@
 2. 替换 AdvancedRocketry JAR，并确认仍在使用
    `libVulpes-Continuation 0.2.10` 或更高版本。
 3. 完整重启客户端与服务器，让配置文件生成新增项目。
-4. 若第三方维度本应具备非 Earth 大气，请使用显式 `dimMapping`；未映射维度会按
+4. 已有 `advancedRocketry.cfg` 不会自动覆盖原
+   `stationPlanetSphereScaleMultiplier`；如需采用新默认视觉大小，请手动改为
+   `1.5`。
+5. 若第三方维度本应具备非 Earth 大气，请使用显式 `dimMapping`；未映射维度会按
    可呼吸 `AIR` 处理。
-5. 破坏性黑洞行为必须手动将 `blackHoleFreeSpaceInteraction` 设置为
+6. 破坏性黑洞行为必须手动将 `blackHoleFreeSpaceInteraction` 设置为
    `CAPTURE`；升级不会自动启用。
 
 本次无需手工迁移存档或重建世界；新增 galaxy/generator NBT 字段向后兼容，
@@ -130,10 +162,18 @@
 
 - 已在游戏内确认 Black Hole Generator 可以运行，且此前的 HIGH renderer 已完成
   多轮 playtest；最后一轮吸积盘稳定化提交仍需要最终游戏内回归。
+- 已在用户环境确认写实大气默认观感，以及放大空间站行星后在低轨高度俯视时的
+  大气代理球缺口修复。
 - Java 与 GLSL 1.20 解析、投影/culling、Kerr LUT、动画周期、球体网格和 GL
   state 契约已完成静态验证。
-- 当前开发环境无法取得 Gradle 7.4.2 分发包，因此未执行完整的
-  `./gradlew clean build`。
+- 当前分支的数学、光学深度 LUT、profile/NBT、零光照、天体方向、空间站大气
+  包络与 Altitude Controller 速率共 47 项回归测试通过；6 个 GLSL 1.20 大气
+  shader 也已通过离线编译验证。
+- 当前开发环境具备同级 `libVulpes-Continuation` 与 Gradle 7.4.2，但运行 Gradle
+  所需的 ForgeGradle/旧 Maven 依赖未完整缓存，且 Java 子进程无法访问外网，
+  因此未在该环境执行完整的 `./gradlew clean build`。
+- 写实大气仍需完成游戏内视觉矩阵、1920×1080 GPU/CPU 性能门槛、真实 GL2
+  驱动、OptiFine/Angelica、外部 shader pack 和 context recreation 实机验收。
 - 尚未完成 dedicated server、完整多人，以及 Angelica、外部 shader pack、
   MSAA/FBO 与多 GPU 的完整组合矩阵验收。
 

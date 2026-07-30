@@ -34,6 +34,7 @@ import zmaster587.advancedRocketry.client.render.entity.RenderStarUIEntity;
 import zmaster587.advancedRocketry.client.render.entity.RendererItem;
 import zmaster587.advancedRocketry.client.render.item.RendererBucket;
 import zmaster587.advancedRocketry.client.render.item.RendererLaserGun;
+import zmaster587.advancedRocketry.client.render.atmosphere.AtmosphereRenderManager;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderBiomeScanner;
 import zmaster587.advancedRocketry.client.render.multiblocks.RenderBlackHoleGenerator;
 import zmaster587.advancedRocketry.client.render.blackhole.BlackHoleRenderManager;
@@ -116,6 +117,7 @@ public class ClientProxy extends CommonProxy {
 	@Override
 	public void registerRenderers() {
 		BlackHoleRenderManager.INSTANCE.registerResourceReloadListener();
+		AtmosphereRenderManager.INSTANCE.registerResourceReloadListener();
 		
 		RendererModelBlock modelBlock = new RendererModelBlock();
 		

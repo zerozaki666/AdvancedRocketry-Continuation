@@ -6,6 +6,7 @@ import net.minecraft.client.renderer.Tessellator;
 import org.lwjgl.opengl.GL11;
 
 import zmaster587.advancedRocketry.client.render.planet.RenderPlanetarySky;
+import zmaster587.advancedRocketry.client.render.planet.PlanetRenderContext;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.libVulpes.gui.GuiImageButton;
 
@@ -22,7 +23,7 @@ public class GuiPlanetButton extends GuiImageButton {
 	@Override
 	public void drawButton(Minecraft minecraft, int par2, int par3)
 	{
-		if (this.visible)
+		if (this.visible && properties != null)
 		{
 			//
 			this.field_146123_n = par2 >= this.xPosition && par3 >= this.yPosition && par2 < this.xPosition + this.width && par3 < this.yPosition + this.height;
@@ -44,14 +45,21 @@ public class GuiPlanetButton extends GuiImageButton {
             //GlStateManager.blendFunc(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE_MINUS_SRC_ALPHA);
            
 	
-	        Tessellator tessellator = Tessellator.instance;
-	        GL11.glPushMatrix();
-	        GL11.glRotated(90, -1, 0, 0);
-	        //GL11.glTranslatef(xPosition, 100 + this.zLevel, yPosition);
-	        float newWidth = width/2f;
-	        
-	        RenderPlanetarySky.renderPlanetPubHelper(tessellator, properties.getPlanetIcon(), (int)(xPosition + newWidth), (int)(yPosition + newWidth), (double)this.zLevel, newWidth, 1f, properties.getSolarTheta(), properties.hasAtmosphere(), properties.skyColor, properties.ringColor, properties.isGasGiant(), properties.hasRings());
-            GL11.glPopMatrix();
+			Tessellator tessellator = Tessellator.instance;
+			GL11.glPushMatrix();
+			GL11.glRotated(90, -1, 0, 0);
+			//GL11.glTranslatef(xPosition, 100 + this.zLevel, yPosition);
+			float newWidth = width/2f;
+
+			RenderPlanetarySky.renderPlanetPubHelper(tessellator,
+					PlanetRenderContext.fromProperties(properties,
+							properties.getPlanetIcon(),
+							(int)(xPosition + newWidth),
+							(int)(yPosition + newWidth),
+							(double)this.zLevel, newWidth, 1F,
+							properties.getSolarTheta(),
+							PlanetRenderContext.ViewKind.GUI));
+			GL11.glPopMatrix();
 	        
 	        /*vertexbuffer.begin(7, DefaultVertexFormats.POSITION_TEX);
 	        vertexbuffer.pos(xPosition, yPosition + height, (double)this.zLevel).tex(0, 1).endVertex();

@@ -11,12 +11,17 @@ import net.minecraftforge.client.model.ModelFormatException;
 import net.minecraftforge.client.model.obj.WavefrontObject;
 import org.lwjgl.opengl.GL11;
 import zmaster587.advancedRocketry.client.render.multiblocks.RendererWarpCore;
+import zmaster587.advancedRocketry.client.render.atmosphere.AnalyticAtmosphereRenderer;
+import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.entity.EntityUIPlanet;
 import zmaster587.libVulpes.render.RenderHelper;
 
 public class RenderPlanetUIEntity extends Render {
 
+	private static final int ATMOSPHERE_LONGITUDE_SEGMENTS = 96;
+	private static final int ATMOSPHERE_LATITUDE_SEGMENTS = 48;
+	private static final double VIEW_DIRECTION_EPSILON = 0.000001D;
 	private static WavefrontObject sphere;
 	public static ResourceLocation planetUIBG = new ResourceLocation("advancedrocketry:textures/gui/planetUIOverlay.png");
 	public static ResourceLocation planetUIFG = new ResourceLocation("advancedrocketry:textures/gui/planetUIOverlayFG.png");
@@ -35,7 +40,7 @@ public class RenderPlanetUIEntity extends Render {
 			float entityYaw, float partialTicks) {
 
 		DimensionProperties properties = ((EntityUIPlanet)entity).getProperties();
-		if(properties == null)
+		if(properties == null || sphere == null)
 			return;
 
 		float sizeScale = Math.max(properties.gravitationalMultiplier*properties.gravitationalMultiplier*((EntityUIPlanet)entity).getScale(), .5f);
@@ -97,20 +102,11 @@ public class RenderPlanetUIEntity extends Render {
 		GL11.glPopMatrix();
 
 		//Render ATM
-		if(properties.hasAtmosphere()) {
-			GL11.glPushMatrix();
-			GL11.glDisable(GL11.GL_TEXTURE_2D);
-			OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 0, 0);
-			GL11.glColor4f(properties.skyColor[0], properties.skyColor[1], properties.skyColor[2], .1f);
-
-			for(int i = 0; i < 5; i++) {
-				GL11.glScalef(1.02f, 1.02f, 1.02f);
-				sphere.renderAll();
-			}
-
-
-			GL11.glEnable(GL11.GL_TEXTURE_2D);
-			GL11.glPopMatrix();
+		if((properties.hasAtmosphere() || properties.isGasGiant())
+				&& AnalyticAtmosphereRenderer
+						.isFixedFunctionAtmosphereSafe()) {
+			renderAtmosphereShell(tess, properties,
+					-x, -(y+sizeScale*0.03F), -z);
 		}
 
 
@@ -211,6 +207,172 @@ public class RenderPlanetUIEntity extends Render {
 		GL11.glDisable(GL11.GL_BLEND);
 		GL11.glEnable(GL11.GL_LIGHTING);
 		OpenGlHelper.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA, 0, 0);
+	}
+
+	private static void renderAtmosphereShell(
+			Tessellator tessellator, DimensionProperties properties,
+			double viewX, double viewY, double viewZ) {
+		double viewLength = Math.sqrt(
+				viewX*viewX+viewY*viewY+viewZ*viewZ);
+		if(!finite(viewLength)
+				|| viewLength <= VIEW_DIRECTION_EPSILON)
+			return;
+		viewX /= viewLength;
+		viewY /= viewLength;
+		viewZ /= viewLength;
+
+		float pressure = AnalyticAtmosphereRenderer.visualPressure(
+				properties, properties.isGasGiant());
+		if(!finite(pressure))
+			pressure = 1F;
+		AtmosphereVisualProperties.Snapshot overrides =
+				properties.getAtmosphereVisualPropertiesSnapshot();
+		if(overrides.hasSunIntensityMultiplier()
+				&& overrides.getSunIntensityMultiplier() <= 0D)
+			return;
+		float red = overrides.hasRayleighColor()
+				? sanitizeColor(overrides.getRayleighColorComponent(0),
+						0.45F)
+				: colorComponent(properties.skyColor, 0, 0.45F);
+		float green = overrides.hasRayleighColor()
+				? sanitizeColor(overrides.getRayleighColorComponent(1),
+						0.65F)
+				: colorComponent(properties.skyColor, 1, 0.65F);
+		float blue = overrides.hasRayleighColor()
+				? sanitizeColor(overrides.getRayleighColorComponent(2),
+						1F)
+				: colorComponent(properties.skyColor, 2, 1F);
+		float maximumAlpha = Math.min(
+				properties.isGasGiant() ? 0.42F : 0.34F,
+				0.08F+0.05F*pressure);
+		double planetRadiusKm = overrides.hasPlanetRadiusKm()
+				? overrides.getPlanetRadiusKm() : 6360D;
+		double atmosphereHeightKm = overrides.hasAtmosphereHeightKm()
+				? overrides.getAtmosphereHeightKm()
+				: properties.isGasGiant() ? 200D : 100D;
+		float shellRatio = (float)Math.max(0.02D, Math.min(0.15D,
+				atmosphereHeightKm/planetRadiusKm));
+		float shellRadius = 1F+shellRatio;
+
+		GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+		GL11.glPushMatrix();
+		boolean clientAttributesPushed = false;
+		try {
+			GL11.glPushClientAttrib(GL11.GL_ALL_CLIENT_ATTRIB_BITS);
+			clientAttributesPushed = true;
+			GL11.glScalef(
+					shellRadius, shellRadius, shellRadius);
+			GL11.glDisable(GL11.GL_TEXTURE_2D);
+			GL11.glDisable(GL11.GL_LIGHTING);
+			GL11.glDisable(GL11.GL_ALPHA_TEST);
+			GL11.glEnable(GL11.GL_DEPTH_TEST);
+			GL11.glDepthMask(false);
+			GL11.glEnable(GL11.GL_CULL_FACE);
+			GL11.glCullFace(GL11.GL_BACK);
+			GL11.glFrontFace(GL11.GL_CCW);
+			GL11.glEnable(GL11.GL_BLEND);
+			OpenGlHelper.glBlendFunc(
+					GL11.GL_SRC_ALPHA,
+					GL11.GL_ONE_MINUS_SRC_ALPHA, 0, 0);
+			GL11.glShadeModel(GL11.GL_SMOOTH);
+
+			tessellator.startDrawing(GL11.GL_QUADS);
+			for(int latitude = 0;
+					latitude < ATMOSPHERE_LATITUDE_SEGMENTS;
+					latitude++) {
+				double latitude0 = -Math.PI*0.5D
+						+Math.PI*latitude
+								/ATMOSPHERE_LATITUDE_SEGMENTS;
+				double latitude1 = -Math.PI*0.5D
+						+Math.PI*(latitude+1)
+								/ATMOSPHERE_LATITUDE_SEGMENTS;
+				for(int longitude = 0;
+						longitude
+								< ATMOSPHERE_LONGITUDE_SEGMENTS;
+						longitude++) {
+					double longitude0 = Math.PI*2D*longitude
+							/ATMOSPHERE_LONGITUDE_SEGMENTS;
+					double longitude1 = Math.PI*2D*(longitude+1)
+							/ATMOSPHERE_LONGITUDE_SEGMENTS;
+					addAtmosphereVertex(
+							tessellator, latitude0, longitude0,
+							viewX, viewY, viewZ,
+							red, green, blue, maximumAlpha);
+					addAtmosphereVertex(
+							tessellator, latitude1, longitude0,
+							viewX, viewY, viewZ,
+							red, green, blue, maximumAlpha);
+					addAtmosphereVertex(
+							tessellator, latitude1, longitude1,
+							viewX, viewY, viewZ,
+							red, green, blue, maximumAlpha);
+					addAtmosphereVertex(
+							tessellator, latitude0, longitude1,
+							viewX, viewY, viewZ,
+							red, green, blue, maximumAlpha);
+				}
+			}
+			tessellator.draw();
+		}
+		finally {
+			if(clientAttributesPushed)
+				GL11.glPopClientAttrib();
+			GL11.glPopMatrix();
+			GL11.glPopAttrib();
+		}
+	}
+
+	private static void addAtmosphereVertex(
+			Tessellator tessellator,
+			double latitude, double longitude,
+			double viewX, double viewY, double viewZ,
+			float red, float green, float blue,
+			float maximumAlpha) {
+		double latitudeRadius = Math.cos(latitude);
+		double normalX = latitudeRadius*Math.cos(longitude);
+		double normalY = Math.sin(latitude);
+		double normalZ = latitudeRadius*Math.sin(longitude);
+		double viewDot = normalX*viewX
+				+normalY*viewY+normalZ*viewZ;
+		double limb = Math.max(
+				0D, Math.min(1D, 1D-Math.abs(viewDot)));
+		double outerFade = smoothstep(
+				0D, 0.12D, Math.abs(viewDot));
+		float alpha = (float)(maximumAlpha
+				*Math.pow(limb, 1.35D)*outerFade);
+		tessellator.setColorRGBA_F(
+				red, green, blue, alpha);
+		tessellator.addVertex(normalX, normalY, normalZ);
+	}
+
+	private static float colorComponent(float[] color, int index,
+			float fallback) {
+		if(color == null || color.length <= index
+				|| Float.isNaN(color[index])
+				|| Float.isInfinite(color[index]))
+			return fallback;
+		return Math.max(0F, Math.min(4F, color[index]));
+	}
+
+	private static float sanitizeColor(float value, float fallback) {
+		if(Float.isNaN(value) || Float.isInfinite(value))
+			return fallback;
+		return Math.max(0F, Math.min(4F, value));
+	}
+
+	private static double smoothstep(
+			double edge0, double edge1, double value) {
+		double amount = Math.max(0D, Math.min(
+				1D, (value-edge0)/(edge1-edge0)));
+		return amount*amount*(3D-2D*amount);
+	}
+
+	private static boolean finite(double value) {
+		return !Double.isNaN(value) && !Double.isInfinite(value);
+	}
+
+	private static boolean finite(float value) {
+		return !Float.isNaN(value) && !Float.isInfinite(value);
 	}
 
 	protected void renderMassIndicator(Tessellator tess, float percent) {

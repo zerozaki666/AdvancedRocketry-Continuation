@@ -32,10 +32,14 @@ import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.IPlanetaryProvider;
 import zmaster587.advancedRocketry.api.RocketEvent;
 import zmaster587.advancedRocketry.api.armor.IFillableArmor;
+import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
 import zmaster587.advancedRocketry.atmosphere.AtmosphereHandler;
 import zmaster587.advancedRocketry.client.render.ClientDynamicTexture;
+import zmaster587.advancedRocketry.client.render.atmosphere.AnalyticAtmosphereRenderer;
 import zmaster587.advancedRocketry.client.render.planet.RenderPlanetarySky;
+import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
+import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.entity.EntityRocket;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.libVulpes.api.IArmorComponent;
@@ -56,6 +60,7 @@ public class RocketEventHandler extends Gui {
 	private static ClientDynamicTexture outerBounds;
 	private static final int getImgSize = 512;
 	private static final int outerImgSize = getImgSize/8;
+	private static final double ATMOSPHERE_PROJECTION_EPSILON = 0.001D;
 	private static boolean mapReady = false;
 	private static boolean mapNeedsBinding = false;
 	private static IRenderHandler prevRenderHanlder = null;
@@ -320,24 +325,109 @@ public class RocketEventHandler extends Gui {
 		GL11.glDisable(GL11.GL_TEXTURE_2D);
 		GL11.glBindTexture(GL11.GL_TEXTURE_2D,0);
 
-		tess.startDrawingQuads();
-		tess.setColorRGBA_F((float)skyColor.xCoord, (float)skyColor.yCoord, (float)skyColor.zCoord, 0.05f);
-
-		size = (getImgSize*100/(180-Minecraft.getMinecraft().renderViewEntity.posY - deltaY));
-
-
-		for(int i = 0; i < 5 * MathHelper.clamp_float(( ( DimensionManager.getInstance().getDimensionProperties(Minecraft.getMinecraft().renderViewEntity.worldObj.provider.dimensionId).getAtmosphereDensity() *.01f * (float)Minecraft.getMinecraft().renderViewEntity.posY -280f) )/150f, 0f, 2f); i++) {
-			RenderHelper.renderTopFace(tess, -9 + i*.6, size, size, -size , -size);
+		Entity camera = Minecraft.getMinecraft().renderViewEntity;
+		double interpolatedY = camera.lastTickPosY
+				+(camera.posY-camera.lastTickPosY)*partialTicks;
+		double projectionDenominator = 180D-interpolatedY;
+		DimensionProperties atmosphereProperties =
+				resolveAtmosphereProperties(camera);
+		boolean renderAtmosphere = atmosphereProperties != null
+				&& (atmosphereProperties.hasAtmosphere()
+						|| atmosphereProperties.isGasGiant())
+				&& AnalyticAtmosphereRenderer
+						.isFixedFunctionAtmosphereSafe();
+		if(renderAtmosphere) {
+			AtmosphereVisualProperties.Snapshot overrides =
+					atmosphereProperties
+							.getAtmosphereVisualPropertiesSnapshot();
+			if(overrides.hasSunIntensityMultiplier()
+					&& overrides.getSunIntensityMultiplier() <= 0D)
+				renderAtmosphere = false;
+		}
+		if(renderAtmosphere) {
+			float pressure = AnalyticAtmosphereRenderer.visualPressure(
+					atmosphereProperties,
+					atmosphereProperties.isGasGiant());
+			float altitudeFade = MathHelper.clamp_float(
+					((float)interpolatedY-256F)/200F, 0F, 1F);
+			float centerAlpha = Math.min(0.28F,
+					(0.05F+0.035F*pressure)*altitudeFade);
+			if(centerAlpha > 0F
+					&& finite(projectionDenominator)
+					&& Math.abs(projectionDenominator)
+							> ATMOSPHERE_PROJECTION_EPSILON) {
+				double atmosphereSize = Math.abs(
+						getImgSize*100D/projectionDenominator);
+				if(finite(atmosphereSize)) {
+					float red = sanitizeColor(skyColor.xCoord, 0.45F);
+					float green = sanitizeColor(
+							skyColor.yCoord, 0.65F);
+					float blue = sanitizeColor(skyColor.zCoord, 1F);
+					GL11.glPushClientAttrib(
+							GL11.GL_ALL_CLIENT_ATTRIB_BITS);
+					try {
+						tess.startDrawing(GL11.GL_TRIANGLE_FAN);
+						tess.setColorRGBA_F(
+								red, green, blue, centerAlpha);
+						tess.addVertex(0D, -9D, 0D);
+						for(int segment = 0; segment <= 64; segment++) {
+							double angle = Math.PI*2D*segment/64D;
+							tess.setColorRGBA_F(
+									red, green, blue, 0F);
+							tess.addVertex(
+									Math.cos(angle)*atmosphereSize,
+									-9D,
+									Math.sin(angle)*atmosphereSize);
+						}
+						tess.draw();
+					}
+					finally {
+						GL11.glPopClientAttrib();
+					}
+				}
+			}
 		}
 
 		//
 		GL11.glEnable(GL11.GL_TEXTURE_2D);
-
-		tess.draw();
 		GL11.glDisable(GL11.GL_BLEND);
 		GL11.glEnable(GL11.GL_FOG);
 		GL11.glPopAttrib();
 		GL11.glPopMatrix();
+	}
+
+	private static DimensionProperties resolveAtmosphereProperties(
+			Entity camera) {
+		if(camera == null || camera.worldObj == null)
+			return null;
+
+		if(camera.worldObj.provider instanceof IPlanetaryProvider
+				&& finite(camera.posX) && finite(camera.posZ)) {
+			IDimensionProperties providerProperties =
+					((IPlanetaryProvider)camera.worldObj.provider)
+							.getDimensionProperties(
+									MathHelper.floor_double(camera.posX),
+									MathHelper.floor_double(camera.posZ));
+			if(providerProperties instanceof DimensionProperties)
+				return (DimensionProperties)providerProperties;
+		}
+
+		int dimensionId = camera.worldObj.provider.dimensionId;
+		DimensionProperties properties = DimensionManager.getInstance()
+				.getDimensionPropertiesExact(dimensionId);
+		if(properties == null && dimensionId == 0)
+			properties = DimensionManager.overworldProperties;
+		return properties;
+	}
+
+	private static float sanitizeColor(double value, float fallback) {
+		if(!finite(value))
+			return fallback;
+		return (float)Math.max(0D, Math.min(4D, value));
+	}
+
+	private static boolean finite(double value) {
+		return !Double.isNaN(value) && !Double.isInfinite(value);
 	}
 
 	@SubscribeEvent

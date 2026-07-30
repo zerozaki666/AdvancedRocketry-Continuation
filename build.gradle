@@ -57,6 +57,7 @@ repositories {
 
 dependencies {
     implementation project(':libVulpes')
+    testImplementation 'junit:junit:4.13.2'
     def localMicdoodleCore = fileTree(
             dir: 'libs',
             include: ['MicdoodleCore*.jar'])

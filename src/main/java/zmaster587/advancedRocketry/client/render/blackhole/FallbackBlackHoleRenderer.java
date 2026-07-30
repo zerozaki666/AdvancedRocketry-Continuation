@@ -13,8 +13,8 @@ import net.minecraft.util.ResourceLocation;
  * rings and rectangular proxy.  This renderer keeps the guaranteed
  * fixed-function path, but builds a deterministic warm-white disk from
  * bounded annular strips.  The far side is mapped through a point-lens
- * approximation, the apparent shadow is drawn opaquely, and the direct near
- * side is composited last so it can cross the foreground like Gargantua.</p>
+ * approximation, the disk has a small projected scale height, and the
+ * apparent shadow is closed again after the direct near side.</p>
  */
 final class FallbackBlackHoleRenderer {
 
@@ -27,6 +27,7 @@ final class FallbackBlackHoleRenderer {
 	private static final int LENSED_RADIAL_BANDS = 20;
 	private static final double TWO_PI = Math.PI*2D;
 	private static final double SQRT_27 = Math.sqrt(27D);
+	private static final double ANIMATION_PERIOD_TICKS = 4096D;
 
 	void render(BlackHoleView view, BlackHoleRenderContext context,
 			boolean iconOnly) {
@@ -54,11 +55,8 @@ final class FallbackBlackHoleRenderer {
 		renderOpaqueShadow(view);
 		if(view.getAccretionRate() > 0.001F && sinInclination >= 0.12F) {
 			renderDirectDisk(view, context, false);
-			/*
-			 * Preserve a deep central silhouette when a high-spin ISCO lets
-			 * the approximate foreground disk enter the apparent shadow.
-			 */
-			renderOpaqueShadow(view, 0.55F);
+			/* No emitting layer may leave the apparent shadow open. */
+			renderOpaqueShadow(view);
 		}
 		renderCriticalBand(view, context);
 	}
@@ -78,11 +76,15 @@ final class FallbackBlackHoleRenderer {
 	 */
 	private void renderDirectDisk(BlackHoleView view,
 			BlackHoleRenderContext context, boolean completeDisk) {
+		GL11.glEnable(GL11.GL_BLEND);
 		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
 		float[] axes = getScreenAxes(view);
 		double inner = Math.max(0.001D, view.getDiskInnerRadiusOverM());
 		double outer = Math.max(inner + 0.001D,
 				view.getDiskOuterRadiusOverM());
+		float sinInclination = Math.abs(
+				(float)Math.sin(view.getViewInclinationRadians()));
+		float volumeBlend = smoothstep(0.12F, 0.55F, sinInclination);
 		float flattening = Math.max(0.075F, Math.abs(
 				(float)Math.cos(view.getViewInclinationRadians())));
 		double start;
@@ -99,26 +101,32 @@ final class FallbackBlackHoleRenderer {
 			end = start + Math.PI + overlap*2D;
 		}
 
-		for(int band = 0; band < DIRECT_RADIAL_BANDS; band++) {
-			double radius0 = mix(inner, outer,
-					band/(double)DIRECT_RADIAL_BANDS);
-			double radius1 = mix(inner, outer,
-					(band + 1D)/DIRECT_RADIAL_BANDS);
-			GL11.glBegin(GL11.GL_QUAD_STRIP);
-			for(int segment = 0; segment <= DISK_SEGMENTS; segment++) {
-				double angle = mix(start, end,
-						segment/(double)DISK_SEGMENTS);
-				emitDirectDiskVertex(view, context, axes, radius0, angle,
-						flattening, completeDisk ? 0.78F : 1F);
-				emitDirectDiskVertex(view, context, axes, radius1, angle,
-						flattening, completeDisk ? 0.78F : 1F);
+		for(int layer = -1; layer <= 1; layer++) {
+			float layerWeight = getVolumeLayerWeight(layer, volumeBlend);
+			for(int band = 0; band < DIRECT_RADIAL_BANDS; band++) {
+				double radius0 = mix(inner, outer,
+						band/(double)DIRECT_RADIAL_BANDS);
+				double radius1 = mix(inner, outer,
+						(band + 1D)/DIRECT_RADIAL_BANDS);
+				GL11.glBegin(GL11.GL_QUAD_STRIP);
+				for(int segment = 0; segment <= DISK_SEGMENTS; segment++) {
+					double angle = mix(start, end,
+							segment/(double)DISK_SEGMENTS);
+					emitDirectDiskVertex(view, context, axes, radius0,
+							angle, flattening, sinInclination, layer,
+							(completeDisk ? 0.78F : 1F)*layerWeight);
+					emitDirectDiskVertex(view, context, axes, radius1,
+							angle, flattening, sinInclination, layer,
+							(completeDisk ? 0.78F : 1F)*layerWeight);
+				}
+				GL11.glEnd();
 			}
-			GL11.glEnd();
 		}
 	}
 
 	private void renderLensedFarSide(BlackHoleView view,
 			BlackHoleRenderContext context, float sinInclination) {
+		GL11.glEnable(GL11.GL_BLEND);
 		GL11.glBlendFunc(GL11.GL_SRC_ALPHA, GL11.GL_ONE);
 		float[] axes = getScreenAxes(view);
 		double inner = Math.max(0.001D, view.getDiskInnerRadiusOverM());
@@ -135,54 +143,70 @@ final class FallbackBlackHoleRenderer {
 		float lensStrength = smoothstep(0.08F, 0.55F, sinInclination);
 
 		drawLensedBranch(view, context, axes, inner, outer, flattening,
-				start, end, einsteinRadius, 1D, 0.88F*lensStrength);
+				sinInclination, start, end, einsteinRadius, 1D,
+				0.88F*lensStrength);
 		drawLensedBranch(view, context, axes, inner, outer, flattening,
-				start, end, einsteinRadius, -1D, 0.48F*lensStrength);
+				sinInclination, start, end, einsteinRadius, -1D,
+				0.48F*lensStrength);
 	}
 
 	private void drawLensedBranch(BlackHoleView view,
 			BlackHoleRenderContext context, float[] axes, double inner,
-			double outer, float flattening, double start, double end,
-			double einsteinRadius, double parity, float alphaScale) {
-		for(int band = 0; band < LENSED_RADIAL_BANDS; band++) {
-			double radius0 = mix(inner, outer,
-					band/(double)LENSED_RADIAL_BANDS);
-			double radius1 = mix(inner, outer,
-					(band + 1D)/LENSED_RADIAL_BANDS);
-			GL11.glBegin(GL11.GL_QUAD_STRIP);
-			for(int segment = 0; segment <= DISK_SEGMENTS; segment++) {
-				double fraction = segment/(double)DISK_SEGMENTS;
-				double angle = mix(start, end, fraction);
-				float endFade = 0.38F + 0.62F*(float)Math.sqrt(
-						Math.max(0D, Math.sin(Math.PI*fraction)));
-				emitLensedDiskVertex(view, context, axes, radius0, angle,
-						flattening, einsteinRadius, parity,
-						alphaScale*endFade);
-				emitLensedDiskVertex(view, context, axes, radius1, angle,
-						flattening, einsteinRadius, parity,
-						alphaScale*endFade);
+			double outer, float flattening, float sinInclination,
+			double start, double end, double einsteinRadius, double parity,
+			float alphaScale) {
+		float volumeBlend = smoothstep(0.12F, 0.55F, sinInclination);
+		for(int layer = -1; layer <= 1; layer++) {
+			float layerWeight = getVolumeLayerWeight(layer, volumeBlend);
+			for(int band = 0; band < LENSED_RADIAL_BANDS; band++) {
+				double radius0 = mix(inner, outer,
+						band/(double)LENSED_RADIAL_BANDS);
+				double radius1 = mix(inner, outer,
+						(band + 1D)/LENSED_RADIAL_BANDS);
+				GL11.glBegin(GL11.GL_QUAD_STRIP);
+				for(int segment = 0; segment <= DISK_SEGMENTS; segment++) {
+					double fraction = segment/(double)DISK_SEGMENTS;
+					double angle = mix(start, end, fraction);
+					float endFade = 0.38F + 0.62F*(float)Math.sqrt(
+							Math.max(0D, Math.sin(Math.PI*fraction)));
+					emitLensedDiskVertex(view, context, axes, radius0,
+							angle, flattening, sinInclination, layer,
+							einsteinRadius, parity,
+							alphaScale*layerWeight*endFade);
+					emitLensedDiskVertex(view, context, axes, radius1,
+							angle, flattening, sinInclination, layer,
+							einsteinRadius, parity,
+							alphaScale*layerWeight*endFade);
+				}
+				GL11.glEnd();
 			}
-			GL11.glEnd();
 		}
 	}
 
 	private void emitDirectDiskVertex(BlackHoleView view,
 			BlackHoleRenderContext context, float[] axes, double radiusOverM,
-			double angle, float flattening, float alphaScale) {
+			double angle, float flattening, float sinInclination, int layer,
+			float alphaScale) {
 		double normalizedRadius = radiusOverM/SQRT_27;
+		double radialFraction = getRadialFraction(view, radiusOverM);
+		double aspect = mix(0.025D, 0.07D, Math.sqrt(radialFraction));
 		double major = Math.cos(angle)*normalizedRadius;
-		double minor = Math.sin(angle)*normalizedRadius*flattening;
+		double minor = Math.sin(angle)*normalizedRadius*flattening
+				+ layer*normalizedRadius*aspect*sinInclination;
 		setDiskColor(view, context, radiusOverM, angle, alphaScale);
 		emitScreenVertex(view, axes, major, minor);
 	}
 
 	private void emitLensedDiskVertex(BlackHoleView view,
 			BlackHoleRenderContext context, float[] axes, double radiusOverM,
-			double angle, float flattening, double einsteinRadius,
-			double parity, float alphaScale) {
+			double angle, float flattening, float sinInclination, int layer,
+			double einsteinRadius, double parity, float alphaScale) {
 		double sourceRadius = radiusOverM/SQRT_27;
+		double radialFraction = getRadialFraction(view, radiusOverM);
+		double aspect = mix(0.025D, 0.07D, Math.sqrt(radialFraction));
 		double sourceX = Math.cos(angle)*sourceRadius;
-		double sourceY = Math.sin(angle)*sourceRadius*flattening;
+		double sourceY = Math.sin(angle)*sourceRadius*flattening
+				+ layer*sourceRadius*aspect*sinInclination;
 		double sourceLength = Math.sqrt(
 				sourceX*sourceX + sourceY*sourceY);
 		double imageLength = 0.5D*(sourceLength + parity*Math.sqrt(
@@ -220,18 +244,25 @@ final class FallbackBlackHoleRenderer {
 		double heat = clamp(temperature*Math.pow(Math.max(inner, 1D), 0.75D)
 				*2.65D, 0D, 1D);
 
-		double phase = context.getAnimationTime()*0.012D
-				+ view.getDeterministicPhase()*TWO_PI;
-		double differentialPhase = phase/Math.pow(
-				Math.max(radiusOverM, 1D), 1.5D);
-		double structure = 0.72D
-				+ 0.16D*Math.sin(angle*11D + radiusOverM*2.7D
-						- differentialPhase*42D)
-				+ 0.09D*Math.sin(angle*23D - radiusOverM*5.1D
-						+ differentialPhase*27D)
-				+ 0.05D*Math.sin(angle*47D + radiusOverM*1.3D
-						- differentialPhase*15D);
-		structure = clamp(structure, 0.24D, 1.08D);
+		double timeCycle = TWO_PI*((context.getAnimationTime()
+				%ANIMATION_PERIOD_TICKS)/ANIMATION_PERIOD_TICKS);
+		double logRadius = Math.log(Math.max(radiusOverM/inner, 0.0001D));
+		double bodyPhase = view.getDeterministicPhase()*TWO_PI;
+		double innerWave = Math.sin(angle*3D + logRadius*4.5D
+				- timeCycle*28D + bodyPhase*3D + 0.70D);
+		double middleWave = Math.sin(angle*7D - logRadius*5.5D
+				- timeCycle*14D + bodyPhase*7D + 2.10D);
+		double outerWave = Math.sin(angle*11D + logRadius*7.5D
+				- timeCycle*7D + bodyPhase*11D + 4.30D);
+		double innerWeight = 1D - smoothstep(0.18D, 0.68D,
+				radialFraction);
+		double outerWeight = smoothstep(0.25D, 0.88D, radialFraction);
+		double structure = 0.77D
+				+ (0.16D + 0.05D*innerWeight)*innerWave
+				+ 0.075D*middleWave
+				+ (0.035D + 0.02D*outerWeight)*outerWave
+				+ 0.03D*innerWave*middleWave;
+		structure = clamp(structure, 0.52D, 1.14D);
 
 		double beta = Math.min(0.85D,
 				1D/Math.sqrt(Math.max(safeRadius, 1D)));
@@ -260,6 +291,20 @@ final class FallbackBlackHoleRenderer {
 		blue = clamp(blue + approaching*0.12D - receding*0.08D,
 				0D, 1D);
 		GL11.glColor4f((float)red, (float)green, (float)blue, alpha);
+	}
+
+	private static float getVolumeLayerWeight(int layer,
+			float volumeBlend) {
+		return layer == 0 ? 1F - 0.46F*volumeBlend
+				: 0.23F*volumeBlend;
+	}
+
+	private static double getRadialFraction(BlackHoleView view,
+			double radiusOverM) {
+		double inner = Math.max(0.001D, view.getDiskInnerRadiusOverM());
+		double outer = Math.max(inner + 0.001D,
+				view.getDiskOuterRadiusOverM());
+		return clamp((radiusOverM - inner)/(outer - inner), 0D, 1D);
 	}
 
 	private void renderOpaqueShadow(BlackHoleView view) {

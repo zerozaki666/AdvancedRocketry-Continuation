@@ -175,6 +175,9 @@ public final class BlackHoleRenderManager
 					selectShaderViews(renderOrder, capabilities);
 			boolean captured = !shaderViews.isEmpty()
 					&& sceneCapture.capture(context, capabilities);
+			if(!shaderViews.isEmpty() && !captured)
+				BlackHoleDiagnostics.warnOnce("scene-capture-unavailable",
+						"The requested Kerr render path could not capture the celestial color buffer; using the fixed-function black-hole renderer.");
 			for(BlackHoleView view : renderOrder) {
 				boolean icon = view.getScreenRadius() < 2F;
 				boolean renderedByShader = false;
@@ -246,8 +249,15 @@ public final class BlackHoleRenderManager
 		BlackHoleRenderMode mode = Configuration.blackHoleRenderMode;
 		if(mode == null)
 			mode = BlackHoleRenderMode.AUTO;
-		if(!Configuration.advancedVFX || mode == BlackHoleRenderMode.LEGACY)
+		if(!Configuration.advancedVFX || mode == BlackHoleRenderMode.LEGACY) {
+			if(!Configuration.advancedVFX
+					&& (mode == BlackHoleRenderMode.FAST
+							|| mode == BlackHoleRenderMode.HIGH))
+				BlackHoleDiagnostics.warnOnce("advanced-vfx-disabled",
+						"blackHoleRenderMode=" + mode
+						+ " was requested, but advancedVFX is disabled; using the fixed-function black-hole renderer.");
 			return Collections.emptySet();
+		}
 		if(!capabilities.supportsKerrApproximation()) {
 			BlackHoleDiagnostics.warnOnce("missing-glsl20",
 					"OpenGL 2.0 with two fragment texture units is unavailable; using legacy visuals.");
@@ -263,8 +273,14 @@ public final class BlackHoleRenderManager
 						"The celestial target is multisampled; AUTO will not guess a resolve path.");
 			return Collections.emptySet();
 		}
-		if(capabilities.getSampleCount() > 0)
+		if(capabilities.getSampleCount() > 0) {
+			if(mode == BlackHoleRenderMode.FAST
+					|| mode == BlackHoleRenderMode.HIGH)
+				BlackHoleDiagnostics.warnOnce("forced-multisample-fallback",
+						"blackHoleRenderMode=" + mode
+						+ " was requested, but the active celestial target is multisampled; using the fixed-function black-hole renderer.");
 			return Collections.emptySet();
+		}
 
 		int minimumRadius = Math.max(2,
 				Configuration.blackHoleShaderMinScreenRadius);

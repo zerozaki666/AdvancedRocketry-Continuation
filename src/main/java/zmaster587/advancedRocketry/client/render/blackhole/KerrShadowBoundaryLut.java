@@ -30,6 +30,8 @@ final class KerrShadowBoundaryLut {
 	private static final int MAX_CACHE_ENTRIES = 48;
 	private static final double TWO_PI = Math.PI*2D;
 	private static final double SQRT_27 = Math.sqrt(27D);
+	static final float MIN_NORMALIZED_RADIUS = 0.45F;
+	static final float MAX_NORMALIZED_RADIUS = 1.55F;
 	private static final double MIN_SPIN = 1.0E-4D;
 	private static final double MIN_INCLINATION_DEGREES = 1D;
 
@@ -201,7 +203,8 @@ final class KerrShadowBoundaryLut {
 					: clamp((target - lowerAngle)/denominator, 0D, 1D);
 			double radius = lower.radius
 					+ (upper.radius - lower.radius)*blend;
-			result[index] = (float)clamp(radius/SQRT_27, 0.45D, 1.55D);
+			result[index] = (float)clamp(radius/SQRT_27,
+					MIN_NORMALIZED_RADIUS, MAX_NORMALIZED_RADIUS);
 			sum += result[index];
 		}
 
@@ -262,7 +265,15 @@ final class KerrShadowBoundaryLut {
 			if(texture == 0)
 				return 0;
 			FloatBuffer data = BufferUtils.createFloatBuffer(values.length);
-			data.put(values);
+			/*
+			 * GL_LUMINANCE16 is normalized fixed point.  Uploading the raw
+			 * Kerr radius clipped every value above 1.0 and flattened almost
+			 * half of a high-spin edge-on shadow.  Encode the supported
+			 * radius interval into [0,1]; both fragment programs decode it
+			 * after sampling.
+			 */
+			for(float value : values)
+				data.put(encodeBoundary(value));
 			data.flip();
 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, texture);
 			GL11.glTexParameteri(GL11.GL_TEXTURE_2D,
@@ -297,6 +308,25 @@ final class KerrShadowBoundaryLut {
 			GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
 			GL13.glActiveTexture(previousActive);
 		}
+	}
+
+	/**
+	 * Package-visible for deterministic codec tests.
+	 */
+	static float encodeBoundary(float radius) {
+		float clamped = (float)clamp(radius, MIN_NORMALIZED_RADIUS,
+				MAX_NORMALIZED_RADIUS);
+		return (clamped - MIN_NORMALIZED_RADIUS)
+				/(MAX_NORMALIZED_RADIUS - MIN_NORMALIZED_RADIUS);
+	}
+
+	/**
+	 * Package-visible for deterministic codec tests.
+	 */
+	static float decodeBoundary(float encoded) {
+		float clamped = (float)clamp(encoded, 0D, 1D);
+		return MIN_NORMALIZED_RADIUS + clamped
+				*(MAX_NORMALIZED_RADIUS - MIN_NORMALIZED_RADIUS);
 	}
 
 	private void trimCache() {

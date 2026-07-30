@@ -23,6 +23,7 @@ public final class BlackHoleView {
 	private static final double SQRT_27 = Math.sqrt(27D);
 	private static final double EPSILON = 1.0E-6D;
 	private static final float MAX_LENS_EINSTEIN_RADIUS = 1.46F;
+	private static final float MAX_DISK_ASPECT_RATIO = 0.075F;
 
 	private final String bodyId;
 	private final float centerX;
@@ -345,7 +346,8 @@ public final class BlackHoleView {
 						+ 4F*MAX_LENS_EINSTEIN_RADIUS
 								*MAX_LENS_EINSTEIN_RADIUS));
 		return screenRadius*Math.max(1.55F,
-				Math.min(4.5F, lensedExtent + 0.12F));
+				Math.min(5.6F, lensedExtent + 0.12F
+						+ diskExtent*MAX_DISK_ASPECT_RATIO));
 	}
 
 	public float getDepth() {

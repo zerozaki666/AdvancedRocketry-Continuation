@@ -22,46 +22,131 @@ varying vec2 vProxyUv;
 
 const float TWO_PI = 6.28318530717958647692;
 const float SQRT_27 = 5.196152422706632;
+const float SHADOW_RADIUS_MIN = 0.45;
+const float SHADOW_RADIUS_MAX = 1.55;
+const float ANIMATION_PERIOD_TICKS = 4096.0;
 
 float saturate(float value) {
 	return clamp(value, 0.0, 1.0);
 }
 
+float safeAngle(vec2 point) {
+	vec2 safePoint = dot(point, point) < 0.00000001
+			? vec2(0.0001, 0.0) : point;
+	return atan(safePoint.y, safePoint.x);
+}
+
+vec2 safeNormalize(vec2 value) {
+	float lengthSquared = dot(value, value);
+	return lengthSquared < 0.000000000001
+			? vec2(1.0, 0.0)
+			: value*inversesqrt(lengthSquared);
+}
+
 float shadowBoundary(vec2 p) {
-	vec2 axis = normalize(uProjectedSpinAxis + vec2(0.000001, 0.0));
+	vec2 axis = safeNormalize(uProjectedSpinAxis);
 	vec2 majorAxis = vec2(-axis.y, axis.x);
 	vec2 curvePoint = vec2(dot(p, majorAxis), dot(p, axis));
-	float angle = atan(curvePoint.y, curvePoint.x)/TWO_PI + 0.5;
-	return texture2D(uShadowBoundary,
+	float angle = safeAngle(curvePoint)/TWO_PI + 0.5;
+	float encoded = texture2D(uShadowBoundary,
 			vec2(fract(angle + 0.001953125), 0.5)).r;
+	return mix(SHADOW_RADIUS_MIN, SHADOW_RADIUS_MAX, encoded);
 }
 
 float annulus(float radius, float innerRadius, float outerRadius,
 		float softness) {
-	return smoothstep(innerRadius, innerRadius + softness, radius)
-			*(1.0 - smoothstep(outerRadius - softness, outerRadius,
-			radius));
+	float span = max(outerRadius - innerRadius, 0.0004);
+	float footprint = 1.25*(abs(dFdx(radius)) + abs(dFdy(radius)));
+	float width = min(max(softness, footprint), span*0.35);
+	return smoothstep(innerRadius - width, innerRadius + width, radius)
+			*(1.0 - smoothstep(outerRadius - width,
+			outerRadius + width, radius));
 }
 
-float diskStructure(float radius, float angle, float phase) {
-	float differentialPhase = phase
-			/pow(max(radius, 1.0), 1.5);
-	float strands = 0.72
-			+ 0.16*sin(angle*11.0 + radius*2.7
-					- differentialPhase*42.0)
-			+ 0.09*sin(angle*23.0 - radius*5.1
-					+ differentialPhase*27.0)
-			+ 0.05*sin(angle*47.0 + radius*1.3
-					- differentialPhase*15.0);
-	return clamp(strands, 0.24, 1.08);
+float filteredSpiral(vec2 diskPoint, float radius, float arms,
+		float winding, float turnsPerCycle, float timeCycle,
+		float phaseOffset) {
+	float radiusSquared = max(dot(diskPoint, diskPoint), 0.00001);
+	vec2 pointDx = dFdx(diskPoint);
+	vec2 pointDy = dFdy(diskPoint);
+	float angleDx = (diskPoint.x*pointDx.y
+			- diskPoint.y*pointDx.x)/radiusSquared;
+	float angleDy = (diskPoint.x*pointDy.y
+			- diskPoint.y*pointDy.x)/radiusSquared;
+	float logRadiusDx = dFdx(radius)/max(radius, 0.0001);
+	float logRadiusDy = dFdy(radius)/max(radius, 0.0001);
+	float phaseDx = arms*angleDx + winding*logRadiusDx;
+	float phaseDy = arms*angleDy + winding*logRadiusDy;
+	float footprint = abs(phaseDx) + abs(phaseDy);
+	float visibility = 1.0 - smoothstep(0.65, 2.35, footprint);
+	float phase = arms*safeAngle(diskPoint)
+			+ winding*log(max(radius/uDiskInner, 0.0001))
+			- turnsPerCycle*timeCycle + phaseOffset;
+	return sin(phase)*visibility;
 }
 
-vec3 diskRadiance(float radius, float angle, float mask,
-		float imageParity, float phase) {
-	if(mask <= 0.0001)
-		return vec3(0.0);
+float diskStructure(vec2 diskPoint, float radius,
+		float radialFraction, float timeCycle) {
+	float bodyPhase = uBodyPhase*TWO_PI;
+	float innerWave = filteredSpiral(diskPoint, radius, 3.0, 4.5,
+			28.0, timeCycle, bodyPhase*3.0 + 0.70);
+	float outerWave = filteredSpiral(diskPoint, radius, 7.0, -5.5,
+			14.0, timeCycle, bodyPhase*7.0 + 2.10);
+	float innerWeight = 1.0 - smoothstep(0.18, 0.68, radialFraction);
+	float outerWeight = smoothstep(0.25, 0.88, radialFraction);
+	float strands = 0.78
+			+ (0.17 + 0.05*innerWeight)*innerWave
+			+ (0.075 + 0.035*outerWeight)*outerWave
+			+ 0.035*innerWave*outerWave;
+	return clamp(strands, 0.55, 1.14);
+}
+
+float sampleDiskVolume(vec2 projectedPoint, float flattening,
+		float sinInclination, float softness, out vec2 diskPoint,
+		out float sampledRadius, out float surfaceLight) {
+	float radialHint = clamp(length(projectedPoint)*SQRT_27,
+			uDiskInner, uDiskOuter);
+	float radialFraction = saturate((radialHint - uDiskInner)
+			/max(uDiskOuter - uDiskInner, 0.0001));
+	float aspect = mix(0.025, 0.070, sqrt(radialFraction));
+	float projectedHeight = radialHint/SQRT_27
+			*aspect*sinInclination;
+	float volumeBlend = smoothstep(0.12, 0.55, sinInclination);
+
+	vec2 middlePoint = vec2(projectedPoint.x,
+			projectedPoint.y/flattening);
+	vec2 upperPoint = vec2(projectedPoint.x,
+			(projectedPoint.y - projectedHeight)/flattening);
+	vec2 lowerPoint = vec2(projectedPoint.x,
+			(projectedPoint.y + projectedHeight)/flattening);
+	float middleRadius = length(middlePoint)*SQRT_27;
+	float upperRadius = length(upperPoint)*SQRT_27;
+	float lowerRadius = length(lowerPoint)*SQRT_27;
+	float middleMask = annulus(middleRadius,
+			uDiskInner, uDiskOuter, softness);
+	float upperMask = annulus(upperRadius,
+			uDiskInner, uDiskOuter, softness)*0.52*volumeBlend;
+	float lowerMask = annulus(lowerRadius,
+			uDiskInner, uDiskOuter, softness)*0.52*volumeBlend;
+
+	float weight = middleMask + upperMask + lowerMask;
+	sampledRadius = (middleRadius*middleMask + upperRadius*upperMask
+			+ lowerRadius*lowerMask)/max(weight, 0.0001);
+	float thickFlattening = min(1.0,
+			flattening + aspect*sinInclination);
+	diskPoint = vec2(projectedPoint.x,
+			projectedPoint.y/max(thickFlattening, 0.060));
+	float surfaceFraction = (upperMask + lowerMask)/max(weight, 0.0001);
+	surfaceLight = mix(0.90, 1.06, saturate(surfaceFraction));
+	return 1.0 - (1.0 - middleMask)
+			*(1.0 - upperMask)*(1.0 - lowerMask);
+}
+
+vec3 diskRadiance(vec2 diskPoint, float radius, float mask,
+		float imageParity, float timeCycle, float surfaceLight) {
 
 	float safeRadius = max(radius, uDiskInner + 0.0001);
+	float angle = safeAngle(diskPoint);
 	float radialFraction = saturate((safeRadius - uDiskInner)
 			/max(uDiskOuter - uDiskInner, 0.0001));
 	float zeroTorque = max(0.0,
@@ -82,9 +167,11 @@ vec3 diskRadiance(float radius, float angle, float mask,
 	float outerFade = 1.0
 			- smoothstep(0.68, 1.0, radialFraction);
 	float rawEmission = mask*uAccretionRate
-			*(0.24 + 0.92*heat)*outerFade
-			*diskStructure(safeRadius, angle, phase)*beaming;
-	float emission = (1.0 - exp(-rawEmission*1.35))*2.05;
+			*(0.24 + 0.92*heat)*outerFade*beaming;
+	float detail = diskStructure(diskPoint, safeRadius,
+			radialFraction, timeCycle);
+	float emission = min((1.0 - exp(-rawEmission*1.28))
+			*detail*surfaceLight, 1.18);
 
 	vec3 amber = vec3(1.0, 0.30, 0.055);
 	vec3 gold = vec3(1.0, 0.70, 0.28);
@@ -100,6 +187,12 @@ vec3 diskRadiance(float radius, float angle, float mask,
 	return color*emission;
 }
 
+vec3 compositeEmission(vec3 background, vec3 light) {
+	vec3 base = clamp(background, vec3(0.0), vec3(1.0));
+	return vec3(1.0) - (vec3(1.0) - base)
+			*exp(-max(light, vec3(0.0)));
+}
+
 void main() {
 	vec2 viewportSize = max(uViewport.zw, vec2(1.0));
 	vec2 originalUv = clamp((gl_FragCoord.xy - uViewport.xy)
@@ -110,8 +203,7 @@ void main() {
 	if(radial > proxyLimit)
 		discard;
 
-	vec2 spinAxis = normalize(uProjectedSpinAxis
-			+ vec2(0.000001, 0.0));
+	vec2 spinAxis = safeNormalize(uProjectedSpinAxis);
 	vec2 majorAxis = vec2(-spinAxis.y, spinAxis.x);
 	vec2 q = vec2(dot(p, majorAxis), dot(p, spinAxis));
 	float boundary = shadowBoundary(p);
@@ -157,7 +249,8 @@ void main() {
 	float pixelSoftness = SQRT_27*1.55/max(uShadowRadius, 1.0);
 	float diskSoftness = min(max(0.055, pixelSoftness),
 			max(0.0004, (uDiskOuter - uDiskInner)*0.45));
-	float phase = uWorldTime*0.012 + uBodyPhase*TWO_PI;
+	float timeCycle = TWO_PI*fract(
+			uWorldTime/ANIMATION_PERIOD_TICKS);
 	float inclinationBlend = smoothstep(0.08, 0.30, sinInclination);
 
 	/*
@@ -173,56 +266,56 @@ void main() {
 	vec2 source = q*lensScale;
 	source += vec2(-q.y, q.x)
 			*(0.030*uSpin/(r2 + 0.20));
-	vec2 sourceDiskPoint = vec2(source.x,
-			source.y/flattening);
-	float sourceDiskRadius = length(sourceDiskPoint)*SQRT_27;
-	float sourceDiskAngle = atan(sourceDiskPoint.y,
-			sourceDiskPoint.x);
+	vec2 sourceDiskPoint;
+	float sourceDiskRadius;
+	float farSurfaceLight;
+	float sourceDiskVolume = sampleDiskVolume(source, flattening,
+			sinInclination, diskSoftness, sourceDiskPoint,
+			sourceDiskRadius, farSurfaceLight);
 	float farGate = smoothstep(-0.12, 0.075,
 			source.y*viewSign);
 	float arcLift = mix(0.62, 1.0,
 			smoothstep(0.025, 0.45, abs(q.y)));
-	float lensedDiskMask = annulus(sourceDiskRadius,
-			uDiskInner, uDiskOuter, diskSoftness)
+	float lensedDiskMask = sourceDiskVolume
 			*farGate*arcLift*inclinationBlend;
 	float imageParity = lensScale < 0.0 ? -1.0 : 1.0;
-	vec3 farDisk = diskRadiance(sourceDiskRadius,
-			sourceDiskAngle, lensedDiskMask, imageParity, phase);
-	color += farDisk;
+	vec3 farDisk = diskRadiance(sourceDiskPoint,
+			sourceDiskRadius, lensedDiskMask, imageParity, timeCycle,
+			farSurfaceLight);
+	color = compositeEmission(color, farDisk);
 
 	/* Apparent shadow occludes the far side and the captured background. */
 	color = mix(color, vec3(0.0), shadow);
 
 	/*
-	 * The direct near side is composited after the shadow.  This ordering is
-	 * what lets the foreground band cross the lower silhouette instead of
-	 * being erased into a perfectly isolated black oval.
+	 * The direct near side is evaluated after the far image, but captured
+	 * rays remain black so the apparent shadow stays closed.
 	 */
-	vec2 directDiskPoint = vec2(q.x, q.y/flattening);
-	float directDiskRadius = length(directDiskPoint)*SQRT_27;
-	float directDiskAngle = atan(directDiskPoint.y,
-			directDiskPoint.x);
+	vec2 directDiskPoint;
+	float directDiskRadius;
+	float nearSurfaceLight;
+	float directDiskVolume = sampleDiskVolume(q, flattening,
+			sinInclination, diskSoftness, directDiskPoint,
+			directDiskRadius, nearSurfaceLight);
 	float splitNearGate = smoothstep(-0.12, 0.075,
 			-q.y*viewSign);
 	float nearGate = mix(1.0 - shadow, splitNearGate,
 			inclinationBlend);
-	float directMask = annulus(directDiskRadius,
-			uDiskInner, uDiskOuter, diskSoftness)*nearGate;
-	float foregroundLimb = mix(1.0,
-			smoothstep(0.52, 0.94, radial), shadow);
-	directMask *= foregroundLimb;
-	color += diskRadiance(directDiskRadius, directDiskAngle,
-			directMask, 1.0, phase);
+	float directMask = directDiskVolume*nearGate*(1.0 - shadow);
+	vec3 nearDisk = diskRadiance(directDiskPoint,
+			directDiskRadius, directMask, 1.0, timeCycle,
+			nearSurfaceLight);
+	color = compositeEmission(color, nearDisk);
 
 	float criticalBand = (1.0 - smoothstep(edgeWidth*0.65,
 			edgeWidth*2.4, abs(radial - boundary)))
-			*sqrt(max(uAccretionRate, 0.0));
+			*sqrt(max(uAccretionRate, 0.0))*(1.0 - shadow);
 	float ringVariation = 0.58 + 0.42*saturate(
 			length(farDisk)*0.40);
 	float ringDoppler = 0.72 + 0.28*saturate(
-			0.5 + 0.5*dot(normalize(p + vec2(0.000001)), majorAxis));
-	color += vec3(1.0, 0.88, 0.68)
-			*criticalBand*ringVariation*ringDoppler;
+			0.5 + 0.5*dot(safeNormalize(p), majorAxis));
+	color = compositeEmission(color, vec3(1.0, 0.88, 0.68)
+			*criticalBand*ringVariation*ringDoppler);
 
 	float proxyFeather = max(0.08,
 			3.0/max(uShadowRadius, 1.0));
@@ -230,5 +323,5 @@ void main() {
 			proxyLimit - proxyFeather, proxyLimit, radial);
 	color = mix(originalColor, color,
 			saturate(uAlpha)*proxyFade);
-	gl_FragColor = vec4(clamp(color, 0.0, 4.0), 1.0);
+	gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
 }

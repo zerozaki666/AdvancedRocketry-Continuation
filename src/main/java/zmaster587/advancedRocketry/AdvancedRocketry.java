@@ -374,7 +374,7 @@ public class AdvancedRocketry {
 
 		zmaster587.advancedRocketry.api.Configuration.stationSkyOverride = config.get(CLIENT, "StationSkyOverride", true, "If true, AR will use a custom skybox on space stations").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.stationPlanetSphereScaleMultiplier =
-				config.get(CLIENT, "stationPlanetSphereScaleMultiplier", 1D,
+				config.get(CLIENT, "stationPlanetSphereScaleMultiplier", 1.5D,
 						"Multiplier for the apparent size of the planet rendered below space stations",
 						0.01D, 100D).getDouble();
 		zmaster587.advancedRocketry.api.Configuration.stationPlanetRotationSpeedMultiplier =

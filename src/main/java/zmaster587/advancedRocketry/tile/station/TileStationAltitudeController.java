@@ -29,16 +29,23 @@ import cpw.mods.fml.relauncher.Side;
 
 public class TileStationAltitudeController extends TileEntity implements IModularInventory, INetworkMachine, ISliderBar {
 
+	private static final int TARGET_ALTITUDE_SLIDER_ID = 0;
+	private static final int ALTITUDE_CHANGE_RATE_SLIDER_ID = 1;
+	private static final String ALTITUDE_CHANGE_RATE_NBT =
+			"altitudeChangeRateProgress";
+	private static final String NETWORK_PROGRESS_NBT = "progress";
+
 	int gravity;
 	int progress;
+	int altitudeChangeRateProgress;
 
 	private ModuleText moduleGrav, numGravPylons, maxGravBuildSpeed, targetGrav;
 
 	public TileStationAltitudeController() {
 		moduleGrav = new ModuleText(6, 15, "Altitude: ", 0xaa2020);
 		//numGravPylons = new ModuleText(10, 25, "Number Of Thrusters: ", 0xaa2020);
-		maxGravBuildSpeed = new ModuleText(6, 25, LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.maxaltrate"), 0xaa2020);
-		targetGrav = new ModuleText(6, 35, LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.tgtalt"), 0x202020);
+		targetGrav = new ModuleText(6, 30, LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.tgtalt"), 0x202020);
+		maxGravBuildSpeed = new ModuleText(6, 60, LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.maxaltrate"), 0xaa2020);
 	}
 
 	@Override
@@ -49,7 +56,14 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 		modules.add(maxGravBuildSpeed);
 
 		modules.add(targetGrav);
-		modules.add(new ModuleSlider(6, 60, 0, TextureResources.doubleWarningSideBarIndicator, (ISliderBar)this));
+		modules.add(new ModuleSlider(6, 40,
+				TARGET_ALTITUDE_SLIDER_ID,
+				TextureResources.doubleWarningSideBarIndicator,
+				(ISliderBar)this));
+		modules.add(new ModuleSlider(6, 70,
+				ALTITUDE_CHANGE_RATE_SLIDER_ID,
+				TextureResources.doubleWarningSideBarIndicator,
+				(ISliderBar)this));
 
 		updateText();
 		return modules;
@@ -82,11 +96,15 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 			ISpaceObject object = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(xCoord, zCoord);
 			if(object != null) {
 				moduleGrav.setText(String.format("%s %.0fKm",LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.alt"), object.getOrbitalDistance()*200 + 100 ));
-				maxGravBuildSpeed.setText(String.format("%s%.1f", LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.maxaltrate"), 7200D*object.getMaxRotationalAcceleration()));
 			}
 
 			//numThrusters.setText("Number Of Thrusters: 0");
 
+			maxGravBuildSpeed.setText(String.format("%s%.1fx",
+					LibVulpes.proxy.getLocalizedString(
+							"msg.stationaltctrl.maxaltrate"),
+					StationAltitudeChangeRate.getMultiplier(
+							altitudeChangeRateProgress)));
 			targetGrav.setText(String.format("%s %d", LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.tgtalt"), gravity*200 + 100));
 		}
 	}
@@ -104,19 +122,17 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 					
 					double targetGravity = gravity;
 					double angVel = object.getOrbitalDistance();
-					double acc = 0.1*(getTotalProgress(0) - angVel + 1)/(float)getTotalProgress(0);
+					double legacyAltitudeStep =
+							StationAltitudeChangeRate.getLegacyStep(
+									getTotalProgress(
+											TARGET_ALTITUDE_SLIDER_ID),
+									angVel);
+					double finalVel = StationAltitudeChangeRate
+							.moveTowards(angVel, targetGravity,
+									legacyAltitudeStep,
+									altitudeChangeRateProgress);
 
-					double difference = targetGravity - angVel;
-
-					if(difference != 0) {
-						double finalVel = angVel;
-						if(difference < 0) {
-							finalVel = angVel + Math.max(difference, -acc);
-						}
-						else if(difference > 0) {
-							finalVel = angVel + Math.min(difference, acc);
-						}
-
+					if(finalVel != angVel) {
 						object.setOrbitalDistance((float)finalVel);
 						if(!worldObj.isRemote) {
 							//PacketHandler.sendToNearby(new PacketStationUpdate(object, PacketStationUpdate.Type.ROTANGLE_UPDATE), this.worldObj.provider.dimensionId, this.xCoord, this.yCoord, this.zCoord, 1024);
@@ -144,58 +160,86 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 
 	@Override
 	public void writeDataToNetwork(ByteBuf out, byte id) {
-		if(id == 0) {
-			out.writeShort(progress);
-		}
+		if(id == TARGET_ALTITUDE_SLIDER_ID
+				|| id == ALTITUDE_CHANGE_RATE_SLIDER_ID)
+			out.writeShort(getProgress(id));
 	}
 
 	@Override
 	public void readDataFromNetwork(ByteBuf in, byte packetId,
 			NBTTagCompound nbt) {
-		if(packetId == 0) {
-			setProgress(0, in.readShort());
-		}
+		if(packetId == TARGET_ALTITUDE_SLIDER_ID
+				|| packetId == ALTITUDE_CHANGE_RATE_SLIDER_ID)
+			nbt.setShort(NETWORK_PROGRESS_NBT, in.readShort());
 	}
 
 	@Override
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
-
+		if(id == TARGET_ALTITUDE_SLIDER_ID
+				|| id == ALTITUDE_CHANGE_RATE_SLIDER_ID) {
+			setProgress(id, nbt.getShort(NETWORK_PROGRESS_NBT));
+			if(side == Side.SERVER)
+				markDirty();
+		}
 	}
 
 	@Override
 	public void writeToNBT(NBTTagCompound nbt) {
 		super.writeToNBT(nbt);
 		nbt.setShort("numRotations", (short)gravity);
+		nbt.setShort(ALTITUDE_CHANGE_RATE_NBT,
+				(short)altitudeChangeRateProgress);
 	}
 
 	@Override
 	public void readFromNBT(NBTTagCompound nbt) {
 		super.readFromNBT(nbt);
 		gravity = nbt.getShort("numRotations");
+		if(nbt.hasKey("numRotations"))
+			progress = Math.max(0, Math.min(
+					getTotalProgress(TARGET_ALTITUDE_SLIDER_ID),
+					gravity-10));
+		altitudeChangeRateProgress =
+				StationAltitudeChangeRate.clampSliderProgress(
+						nbt.getShort(ALTITUDE_CHANGE_RATE_NBT));
 	}
 
 
 	@Override
 	public float getNormallizedProgress(int id) {
-		return getProgress(0)/(float)getTotalProgress(0);
+		return getProgress(id)/(float)getTotalProgress(id);
 	}
 
 	@Override
 	public void setProgress(int id, int progress) {
-
-		this.progress = progress;
-		gravity = progress + 10;
+		if(id == TARGET_ALTITUDE_SLIDER_ID) {
+			this.progress = Math.max(0,
+					Math.min(getTotalProgress(id), progress));
+			gravity = this.progress + 10;
+		}
+		else if(id == ALTITUDE_CHANGE_RATE_SLIDER_ID)
+			altitudeChangeRateProgress =
+					StationAltitudeChangeRate.clampSliderProgress(
+							progress);
 	}
 
 	@Override
 	public int getProgress(int id) {
-		return this.progress;
+		if(id == TARGET_ALTITUDE_SLIDER_ID)
+			return progress;
+		if(id == ALTITUDE_CHANGE_RATE_SLIDER_ID)
+			return altitudeChangeRateProgress;
+		return 0;
 	}
 
 	@Override
 	public int getTotalProgress(int id) {
-		return 190;
+		if(id == TARGET_ALTITUDE_SLIDER_ID)
+			return 190;
+		if(id == ALTITUDE_CHANGE_RATE_SLIDER_ID)
+			return StationAltitudeChangeRate.SLIDER_STEPS;
+		return 1;
 	}
 
 	@Override
@@ -206,6 +250,7 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	@Override
 	public void setProgressByUser(int id, int progress) {
 		setProgress(id, progress);
-		PacketHandler.sendToServer(new PacketMachine(this, (byte)0));
+		updateText();
+		PacketHandler.sendToServer(new PacketMachine(this, (byte)id));
 	}
 }

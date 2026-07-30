@@ -85,9 +85,14 @@
 
 - 将空间站下方的 LEO 平面改为 64×32 细分球体，并将大气层同步改为球壳。
 - 星球视觉大小继续由原有轨道高度驱动；Orientation Controller 与 Altitude
-  Controller 的控制语义保持不变。
+  Controller 的目标值语义保持不变。
 - 新增星球视觉倍率、自转速度和地表贴图 tiling 配置。默认自转周期约 1000 秒，
-  LEO 地表默认使用 2×2 tiling。
+  LEO 地表默认使用 2×2 tiling；星球视觉倍率默认值现为 `1.5`。
+- Altitude Controller 在 Target Altitude 下方新增 Max Altitude Change Rate
+  slider；最低档 `1×` 与旧版速度完全一致，最高可调至旧版速度的 `10×`，选择值
+  会随控制器存档并同步至服务端。
+- 修复高轨目标区间中原有步长归零或变为负值、导致控制器停滞或反向移动的问题；
+  不高于 `38100 km` 时的 `1×` 步长计算保持不变。
 - 修复较大星球视觉倍率配合低轨道高度时，相机会进入大气代理球并触发近/远裁剪，
   从而在俯视画面中形成凹洞/开口的问题；正常高度与默认倍率下的既有构图保持不变。
 - Earth 与 Moon 的 LEO 贴图升级为高分辨率资源。
@@ -131,7 +136,7 @@
 | Energy | `defaultBurnTime` | `500` | 未单独配置的物质燃料燃烧 tick |
 | Energy | `blackHoleTimings` | 常见方块各 `1` tick | `modid:item[:meta-or-*];ticks` 覆盖列表 |
 | Energy | `blackHoleAllowUnlistedMatter` | `true` | 是否允许未列出的物品使用 `defaultBurnTime` |
-| Client | `stationPlanetSphereScaleMultiplier` | `1.0` | 空间站下方星球的视觉大小倍率 |
+| Client | `stationPlanetSphereScaleMultiplier` | `1.5` | 空间站下方星球的视觉大小倍率 |
 | Client | `stationPlanetRotationSpeedMultiplier` | `1.0` | 星球自转倍率；`0` 停止自转 |
 | Client | `stationPlanetTextureTilingMultiplier` | `1.0` | 默认 2×2 tiling 的倍率；`0.5` 恢复 1×1 |
 
@@ -141,9 +146,12 @@
 2. 替换 AdvancedRocketry JAR，并确认仍在使用
    `libVulpes-Continuation 0.2.10` 或更高版本。
 3. 完整重启客户端与服务器，让配置文件生成新增项目。
-4. 若第三方维度本应具备非 Earth 大气，请使用显式 `dimMapping`；未映射维度会按
+4. 已有 `advancedRocketry.cfg` 不会自动覆盖原
+   `stationPlanetSphereScaleMultiplier`；如需采用新默认视觉大小，请手动改为
+   `1.5`。
+5. 若第三方维度本应具备非 Earth 大气，请使用显式 `dimMapping`；未映射维度会按
    可呼吸 `AIR` 处理。
-5. 破坏性黑洞行为必须手动将 `blackHoleFreeSpaceInteraction` 设置为
+6. 破坏性黑洞行为必须手动将 `blackHoleFreeSpaceInteraction` 设置为
    `CAPTURE`；升级不会自动启用。
 
 本次无需手工迁移存档或重建世界；新增 galaxy/generator NBT 字段向后兼容，
@@ -154,12 +162,16 @@
 
 - 已在游戏内确认 Black Hole Generator 可以运行，且此前的 HIGH renderer 已完成
   多轮 playtest；最后一轮吸积盘稳定化提交仍需要最终游戏内回归。
+- 已在用户环境确认写实大气默认观感，以及放大空间站行星后在低轨高度俯视时的
+  大气代理球缺口修复。
 - Java 与 GLSL 1.20 解析、投影/culling、Kerr LUT、动画周期、球体网格和 GL
   state 契约已完成静态验证。
-- 写实大气的数学、光学深度 LUT、profile/NBT、零光照语义和天体方向共 29 项
-  回归测试通过；6 个 GLSL 1.20 大气 shader 也已通过离线编译验证。
-- 当前开发环境缺少同级 `libVulpes-Continuation` 工程，且无法取得 Gradle
-  7.4.2 分发包，因此未执行完整的 `./gradlew clean build`。
+- 当前分支的数学、光学深度 LUT、profile/NBT、零光照、天体方向、空间站大气
+  包络与 Altitude Controller 速率共 47 项回归测试通过；6 个 GLSL 1.20 大气
+  shader 也已通过离线编译验证。
+- 当前开发环境具备同级 `libVulpes-Continuation` 与 Gradle 7.4.2，但运行 Gradle
+  所需的 ForgeGradle/旧 Maven 依赖未完整缓存，且 Java 子进程无法访问外网，
+  因此未在该环境执行完整的 `./gradlew clean build`。
 - 写实大气仍需完成游戏内视觉矩阵、1920×1080 GPU/CPU 性能门槛、真实 GL2
   驱动、OptiFine/Angelica、外部 shader pack 和 context recreation 实机验收。
 - 尚未完成 dedicated server、完整多人，以及 Angelica、外部 shader pack、

@@ -13,6 +13,7 @@ import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
 import zmaster587.advancedRocketry.client.render.atmosphere.AnalyticAtmosphereRenderer;
 import zmaster587.advancedRocketry.client.render.atmosphere.AtmosphereRenderManager;
+import zmaster587.advancedRocketry.client.render.atmosphere.AtmosphereShellGeometry;
 import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
@@ -29,10 +30,10 @@ import net.minecraftforge.common.util.ForgeDirection;
 public class RenderStationSpaceSky extends RenderPlanetarySky {
 
 	private static final int SPHERE_LONGITUDE_SEGMENTS = 64;
-	private static final int SPHERE_LATITUDE_SEGMENTS = 32;
+	private static final int SPHERE_LATITUDE_SEGMENTS =
+			AtmosphereShellGeometry.STATION_SHELL_LATITUDE_SEGMENTS;
 	private static final double SURFACE_ROTATION_PERIOD_TICKS = 50000D;
 	private static final double ATMOSPHERE_ROTATION_PERIOD_TICKS = 5000D;
-	private static final float PLANET_SURFACE_DISTANCE = 10F;
 	private static final double PLANET_TEXTURE_BASE_TILING = 2D;
 
 	private static int stationPlanetSurfaceSphereGlList;
@@ -202,9 +203,17 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 		if(radius <= 0F || Float.isInfinite(radius) || Float.isNaN(radius))
 			return;
 
-		// Keep the nearest surface at the legacy plane's Y position while
-		// ensuring the camera remains outside the sphere at every scale.
-		double centerY = -PLANET_SURFACE_DISTANCE - radius;
+		double maximumShellRadius = targetProperties == null
+				? radius
+				: AtmosphereRenderManager.INSTANCE
+						.resolveMaximumSpaceShellDisplayRadius(
+								targetProperties, radius);
+		// Keep the legacy surface position until a large visual scale would
+		// put the camera inside an atmosphere or cloud proxy.
+		double centerY = AtmosphereShellGeometry.resolveStationCenterY(
+				radius, maximumShellRadius);
+		if(Double.isNaN(centerY) || Double.isInfinite(centerY))
+			return;
 		double rotationSpeed =
 				Configuration.stationPlanetRotationSpeedMultiplier;
 		long worldTime = mc.theWorld == null ? 0L
@@ -255,8 +264,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 				enableSurfaceLighting(context);
 				renderTexturedSphere(
 						DimensionProperties.getAtmosphereLEOResource(),
-						radius*(targetProperties.isGasGiant()
-										? 1.012F : 1.006F),
+						(float)AtmosphereShellGeometry.cloudOuterRadius(
+								radius, targetProperties.isGasGiant()),
 						centerY, getRotationDegrees(worldTime, partialTicks,
 								ATMOSPHERE_ROTATION_PERIOD_TICKS,
 								rotationSpeed),

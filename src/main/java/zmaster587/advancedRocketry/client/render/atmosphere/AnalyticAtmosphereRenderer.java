@@ -348,9 +348,10 @@ public final class AnalyticAtmosphereRenderer {
 			return false;
 		float shellRatio = resolveShellRatio(properties, overrides,
 				properties.isGasGiant(),
-				properties.isGasGiant() ? 0.032F : 0.016F);
-		float outerRadius = groundRadius*(1F+shellRatio
-				*(0.8F+0.2F*Math.min(pressure, 4F)));
+				properties.isGasGiant()
+						? 200F/6360F : 100F/6360F);
+		float outerRadius = (float)AtmosphereShellGeometry
+				.fallbackOuterRadius(groundRadius, shellRatio, pressure);
 		float baseAlpha = clamp(alpha*(properties.isGasGiant()
 				? 0.72F : 0.52F)
 				*(0.35F+0.65F*(1F-(float)Math.exp(-pressure))));
@@ -512,11 +513,21 @@ public final class AnalyticAtmosphereRenderer {
 			return fallback;
 		double planetRadiusKm = overrides.hasPlanetRadiusKm()
 				? overrides.getPlanetRadiusKm() : 6360D;
+		double defaultAtmosphereHeightKm = gasGiant ? 200D : 100D;
+		if(!finite(planetRadiusKm)
+				|| planetRadiusKm < 100D
+				|| planetRadiusKm > 200000D)
+			return fallback;
+		double maximumAtmosphereHeightKm = Math.min(
+				10000D, planetRadiusKm*0.5D);
+		double fallbackAtmosphereHeightKm = Math.min(
+				defaultAtmosphereHeightKm, maximumAtmosphereHeightKm);
 		double atmosphereHeightKm = overrides.hasAtmosphereHeightKm()
+				&& overrides.getAtmosphereHeightKm()
+						<= maximumAtmosphereHeightKm
 				? overrides.getAtmosphereHeightKm()
-				: gasGiant ? 200D : 100D;
-		if(!finite(planetRadiusKm) || !finite(atmosphereHeightKm)
-				|| planetRadiusKm <= 0D || atmosphereHeightKm <= 0D)
+				: fallbackAtmosphereHeightKm;
+		if(!finite(atmosphereHeightKm) || atmosphereHeightKm <= 0D)
 			return fallback;
 		return (float)Math.max(0.0001D,
 				Math.min(0.5D, atmosphereHeightKm/planetRadiusKm));

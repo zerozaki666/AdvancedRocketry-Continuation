@@ -23,6 +23,7 @@ import zmaster587.advancedRocketry.api.AtmosphereRenderMode;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.client.render.planet.PlanetRenderContext;
+import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties.CloudLayerMode;
 import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties.Snapshot;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
@@ -351,9 +352,10 @@ public final class AtmosphereRenderManager
 				lightDirectionY, lightDirectionZ, lightEye))
 			return Path.LEGACY;
 		float displayAtmosphereRadius =
-				(float)(displayGroundRadius
-						*profile.getAtmosphereRadiusKm()
-						/profile.getGroundRadiusKm());
+				(float)AtmosphereShellGeometry.physicalOuterRadius(
+						displayGroundRadius,
+						profile.getAtmosphereHeightKm()
+								/profile.getGroundRadiusKm());
 		double centerDistanceSquared = centerX*centerX
 				+centerY*centerY+centerZ*centerZ;
 		boolean cameraInsideAtmosphere = centerDistanceSquared
@@ -525,6 +527,64 @@ public final class AtmosphereRenderManager
 							+ "the atmosphere was left dark.",
 					throwable);
 			return false;
+		}
+	}
+
+	/**
+	 * Returns the largest concentric proxy that the station path can draw for
+	 * this body.  Shader modes include the analytic fallback envelope because
+	 * capability or LUT failure can change paths within the same session.
+	 */
+	public synchronized double resolveMaximumSpaceShellDisplayRadius(
+			DimensionProperties properties, double displayGroundRadius) {
+		if(properties == null || displayGroundRadius <= 0.0D
+				|| !AtmosphereMath.isFinite(displayGroundRadius))
+			return displayGroundRadius;
+		try {
+			AtmosphereVisualProfile profile =
+					resolveSpaceProfile(properties);
+			if(!profile.isEnabled())
+				return displayGroundRadius;
+
+			AtmosphereRenderMode mode = Configuration.atmosphereRenderMode;
+			if(mode == null)
+				mode = AtmosphereRenderMode.AUTO;
+			boolean positiveRadiance =
+					profile.getSunIntensityMultiplier() > 0.0D
+					&& spaceRadianceCache.resolve(
+							properties.getStar(),
+							properties.getSolarOrbitalDistance(),
+							profile.getSunIntensityMultiplier())
+					&& spaceRadianceCache.hasPositiveRadiance();
+			boolean fallbackEnabled =
+					mode != AtmosphereRenderMode.OFF
+					&& positiveRadiance;
+			boolean shaderEnabled = fallbackEnabled
+					&& mode != AtmosphereRenderMode.LEGACY
+					&& Configuration.advancedVFX
+					&& Configuration.atmosphereMaxShaderBodies > 0;
+			boolean cloudEnabled =
+					Configuration.atmosphereEnableCloudLayer
+					&& profile.getCloudLayerMode()
+							!= CloudLayerMode.DISABLED;
+			double shellRatio = profile.getAtmosphereHeightKm()
+					/profile.getGroundRadiusKm();
+			return AtmosphereShellGeometry.maximumRenderedRadius(
+					displayGroundRadius, shellRatio,
+					profile.getVisualPressure(), shaderEnabled,
+					fallbackEnabled, cloudEnabled,
+					profile.isGasGiant());
+		}
+		catch(Throwable throwable) {
+			AtmosphereDiagnostics.warnOnce(
+					"station-space-envelope",
+					"Could not resolve the station atmosphere envelope; "
+							+ "using a conservative camera-safe radius.",
+					throwable);
+			if(!properties.isGasGiant()
+					&& !properties.hasAtmosphere())
+				return displayGroundRadius;
+			return displayGroundRadius*1.8D;
 		}
 	}
 

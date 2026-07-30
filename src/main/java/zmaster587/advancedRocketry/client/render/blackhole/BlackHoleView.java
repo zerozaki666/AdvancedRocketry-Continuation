@@ -22,6 +22,7 @@ public final class BlackHoleView {
 
 	private static final double SQRT_27 = Math.sqrt(27D);
 	private static final double EPSILON = 1.0E-6D;
+	private static final float MAX_LENS_EINSTEIN_RADIUS = 1.46F;
 
 	private final String bodyId;
 	private final float centerX;
@@ -130,19 +131,62 @@ public final class BlackHoleView {
 		GL11.glGetFloat(GL11.GL_PROJECTION_MATRIX, projection);
 		GL11.glGetInteger(GL11.GL_VIEWPORT, viewport);
 
-		float[] center = projectPoint(centerX, centerY, centerZ, modelView,
-				projection, viewport);
-		float[] edgeX = projectPoint(centerX + basisXX, centerY + basisXY,
-				centerZ + basisXZ, modelView, projection, viewport);
-		float[] edgeY = projectPoint(centerX + basisYX, centerY + basisYY,
-				centerZ + basisYZ, modelView, projection, viewport);
-		if(center == null || edgeX == null || edgeY == null
-				|| center[2] < 0F || center[2] > 1F)
+		/*
+		 * GLU.gluProject may return finite window coordinates for a point
+		 * behind the eye, and projected tangent-plane edges approach
+		 * infinity as they cross clip W=0.  That previously turned a
+		 * behind-camera black hole into a full-screen proxy.  Reject the
+		 * center by its real clip W and derive a bounded angular radius from
+		 * eye-space lengths instead of subtracting two perspective-divided
+		 * edge coordinates.
+		 */
+		double cameraCenterX = transform(modelView, 0, centerX, centerY,
+				centerZ, 1D);
+		double cameraCenterY = transform(modelView, 1, centerX, centerY,
+				centerZ, 1D);
+		double cameraCenterZ = transform(modelView, 2, centerX, centerY,
+				centerZ, 1D);
+		double centerClipW = transform(projection, 3, cameraCenterX,
+				cameraCenterY, cameraCenterZ, 1D);
+		if(!isFinite(cameraCenterX) || !isFinite(cameraCenterY)
+				|| !isFinite(cameraCenterZ) || !isFinite(centerClipW)
+				|| centerClipW <= EPSILON)
 			return null;
 
-		double radiusX = distance(center, edgeX);
-		double radiusY = distance(center, edgeY);
-		double radius = Math.max(radiusX, radiusY);
+		double cameraBasisXX = transform(modelView, 0, basisXX, basisXY,
+				basisXZ, 0D);
+		double cameraBasisXY = transform(modelView, 1, basisXX, basisXY,
+				basisXZ, 0D);
+		double cameraBasisXZ = transform(modelView, 2, basisXX, basisXY,
+				basisXZ, 0D);
+		double cameraBasisYX = transform(modelView, 0, basisYX, basisYY,
+				basisYZ, 0D);
+		double cameraBasisYY = transform(modelView, 1, basisYX, basisYY,
+				basisYZ, 0D);
+		double cameraBasisYZ = transform(modelView, 2, basisYX, basisYY,
+				basisYZ, 0D);
+		double centerDistance = length(cameraCenterX, cameraCenterY,
+				cameraCenterZ);
+		double basisXLength = length(cameraBasisXX, cameraBasisXY,
+				cameraBasisXZ);
+		double basisYLength = length(cameraBasisYX, cameraBasisYY,
+				cameraBasisYZ);
+		double angularTangent = Math.max(basisXLength, basisYLength)
+				/centerDistance;
+		double focalPixelsX = Math.abs(projection.get(0))
+				*Math.max(1, viewport.get(2))*0.5D;
+		double focalPixelsY = Math.abs(projection.get(5))
+				*Math.max(1, viewport.get(3))*0.5D;
+		double radius = angularTangent*Math.max(focalPixelsX, focalPixelsY);
+		if(!isFinite(centerDistance) || centerDistance < EPSILON
+				|| !isFinite(angularTangent)
+				|| !isFinite(focalPixelsX) || !isFinite(focalPixelsY))
+			return null;
+
+		float[] center = projectPoint(centerX, centerY, centerZ, modelView,
+				projection, viewport);
+		if(center == null || center[2] < 0F || center[2] > 1F)
+			return null;
 		if(!isFinite(radius) || radius < 0.25D)
 			return null;
 
@@ -153,8 +197,18 @@ public final class BlackHoleView {
 		double axisY = Math.cos(inclination);
 		double axisZ = Math.sin(inclination)*Math.cos(yaw);
 
-		float[] axisEnd = projectPoint(centerX + axisX, centerY + axisY,
-				centerZ + axisZ, modelView, projection, viewport);
+		double cameraAxisX = transform(modelView, 0, axisX, axisY, axisZ,
+				0D);
+		double cameraAxisY = transform(modelView, 1, axisX, axisY, axisZ,
+				0D);
+		double cameraAxisZ = transform(modelView, 2, axisX, axisY, axisZ,
+				0D);
+		double axisClipW = transform(projection, 3,
+				cameraCenterX + cameraAxisX, cameraCenterY + cameraAxisY,
+				cameraCenterZ + cameraAxisZ, 1D);
+		float[] axisEnd = !isFinite(axisClipW) || axisClipW <= EPSILON
+				? null : projectPoint(centerX + axisX, centerY + axisY,
+						centerZ + axisZ, modelView, projection, viewport);
 		float projectedX = axisEnd == null ? 0F : axisEnd[0] - center[0];
 		float projectedY = axisEnd == null ? 1F : axisEnd[1] - center[1];
 		float projectedLength = (float)Math.sqrt(
@@ -237,10 +291,8 @@ public final class BlackHoleView {
 				? new float[] {resultX, resultY, resultZ} : null;
 	}
 
-	private static double distance(float[] first, float[] second) {
-		double dx = first[0] - second[0];
-		double dy = first[1] - second[1];
-		return Math.sqrt(dx*dx + dy*dy);
+	private static double length(double x, double y, double z) {
+		return Math.sqrt(x*x + y*y + z*z);
 	}
 
 	private static double deterministicUnit(int id) {
@@ -288,7 +340,12 @@ public final class BlackHoleView {
 
 	public float getProxyRadius() {
 		float diskExtent = diskOuterRadiusOverM/(float)SQRT_27;
-		return screenRadius*Math.max(1.45F, Math.min(3.85F, diskExtent));
+		float lensedExtent = 0.5F*(diskExtent
+				+ (float)Math.sqrt(diskExtent*diskExtent
+						+ 4F*MAX_LENS_EINSTEIN_RADIUS
+								*MAX_LENS_EINSTEIN_RADIUS));
+		return screenRadius*Math.max(1.55F,
+				Math.min(4.5F, lensedExtent + 0.12F));
 	}
 
 	public float getDepth() {

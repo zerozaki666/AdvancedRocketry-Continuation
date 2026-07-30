@@ -435,6 +435,39 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.blackHoleShaderStepsHigh =
 				config.get(PERFORMANCE, "blackHoleShaderStepsHigh", 32,
 						"Bounded HIGH approximation steps", 8, 32).getInt();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereRenderMode =
+				zmaster587.advancedRocketry.api.AtmosphereRenderMode.parse(
+						config.get(CLIENT, "atmosphereRenderMode", "AUTO",
+								"AUTO, HIGH, FAST, LEGACY, or OFF")
+								.getString());
+		zmaster587.advancedRocketry.api.Configuration.atmosphereMaxShaderBodies =
+				config.get(CLIENT, "atmosphereMaxShaderBodies", 2,
+						"Maximum raymarched atmosphere bodies per celestial pass",
+						0, 16).getInt();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereMinShaderRadiusPixels =
+				config.get(CLIENT, "atmosphereMinShaderRadiusPixels", 6,
+						"Minimum apparent radius in pixels before atmosphere shaders are considered",
+						1, 4096).getInt();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereOpticalDepthLutWidth =
+				config.get(PERFORMANCE, "atmosphereOpticalDepthLutWidth", 128,
+						"Width of the CPU-generated atmosphere optical-depth LUT",
+						16, 512).getInt();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereOpticalDepthLutHeight =
+				config.get(PERFORMANCE, "atmosphereOpticalDepthLutHeight", 64,
+						"Height of the CPU-generated atmosphere optical-depth LUT",
+						8, 256).getInt();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereEnableCloudLayer =
+				config.get(CLIENT, "atmosphereEnableCloudLayer", true,
+						"Render independent legacy cloud layers when the planet profile permits them")
+						.getBoolean();
+		String atmosphereDebugView = config.get(CLIENT,
+				"atmosphereDebugView", "NONE",
+				"Atmosphere diagnostic view: NONE, TRANSMITTANCE, RAYLEIGH, MIE, OPTICAL_DEPTH, or MULTIPLE_SCATTER")
+				.getString();
+		zmaster587.advancedRocketry.api.Configuration.atmosphereDebugView =
+				atmosphereDebugView == null ? "NONE"
+						: atmosphereDebugView.trim().toUpperCase(
+								java.util.Locale.ROOT);
 		zmaster587.advancedRocketry.api.Configuration.gravityAffectsFuel = config.get(Configuration.CATEGORY_GENERAL, "gravityAffectsFuels", true, "If true planets with higher gravity require more fuel and lower gravity would require less").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.blackHoleGeneratorMultiplier =
 				config.get(ENERGY, "blackHoleGeneratorMultiplier", 1D,
@@ -2108,6 +2141,8 @@ public class AdvancedRocketry {
 					DimensionManager.getInstance().setDimProperties(properties.getId(), properties);
 
 					loadedProps.fogColor = properties.fogColor;
+					loadedProps.setAtmosphereVisualProperties(
+							properties.getAtmosphereVisualProperties());
 					loadedProps.gravitationalMultiplier = properties.gravitationalMultiplier;
 					loadedProps.mass = properties.getMass();
 					loadedProps.hasRings = properties.hasRings;

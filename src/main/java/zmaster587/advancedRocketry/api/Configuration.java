@@ -164,6 +164,16 @@ public class Configuration {
 	public static int blackHoleShaderStepsHigh = 32;
 	public static final boolean blackHoleFallbackAlwaysAvailable = true;
 
+	public static AtmosphereRenderMode atmosphereRenderMode =
+			AtmosphereRenderMode.AUTO;
+	public static int atmosphereMaxShaderBodies = 2;
+	public static int atmosphereMinShaderRadiusPixels = 6;
+	public static int atmosphereOpticalDepthLutWidth = 128;
+	public static int atmosphereOpticalDepthLutHeight = 64;
+	public static boolean atmosphereEnableCloudLayer = true;
+	public static String atmosphereDebugView = "NONE";
+	public static final boolean atmosphereFallbackAlwaysAvailable = true;
+
 	public static double blackHoleGeneratorMultiplier = 1D;
 	public static int defaultItemTimeBlackHole = 500;
 	public static String[] blackHoleTimings = new String[] {

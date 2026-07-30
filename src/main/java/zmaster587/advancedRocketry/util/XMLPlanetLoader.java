@@ -21,6 +21,7 @@ import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.BlackHoleProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.IGalaxy;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
+import zmaster587.advancedRocketry.dimension.AtmosphereVisualProperties;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.DimensionProperties;
 
@@ -220,6 +221,13 @@ public class XMLPlanetLoader {
 				} catch (NumberFormatException e) {
 					AdvancedRocketry.logger.warn("Invalid atmosphereDensity specified"); //TODO: more detailed error msg
 				}
+			}
+			else if(planetPropertyNode.getNodeName()
+					.equalsIgnoreCase("atmosphereRendering")) {
+				properties.setAtmosphereVisualProperties(
+						readAtmosphereRendering(
+								planetPropertyNode,
+								properties.getName()));
 			}
 			else if(planetPropertyNode.getNodeName().equalsIgnoreCase("gravitationalmultiplier")) {
 
@@ -464,6 +472,200 @@ public class XMLPlanetLoader {
 		return list;
 	}
 
+	private static AtmosphereVisualProperties readAtmosphereRendering(
+			Node atmosphereNode, String planetName) {
+		AtmosphereVisualProperties properties =
+				new AtmosphereVisualProperties();
+		Node versionNode = atmosphereNode.hasAttributes()
+				? atmosphereNode.getAttributes().getNamedItem("version")
+				: null;
+		if(versionNode != null) {
+			try {
+				int version = Integer.parseInt(
+						versionNode.getNodeValue().trim());
+				if(version != AtmosphereVisualProperties.SCHEMA_VERSION) {
+					warnAtmosphereXml(
+							planetName, "version",
+							"unsupported version " + version
+									+ "; ignoring this rendering block");
+					return properties;
+				}
+			}
+			catch(IllegalArgumentException exception) {
+				warnAtmosphereXml(
+						planetName, "version",
+						"invalid version; ignoring this rendering block");
+				return properties;
+			}
+		}
+		else {
+			AdvancedRocketry.logger.warn(
+					"Atmosphere rendering block for planet '"
+							+ planetName
+							+ "' has no version; interpreting it as version "
+							+ AtmosphereVisualProperties.SCHEMA_VERSION);
+		}
+
+		Map<String, Node> overrideNodes = new HashMap<String, Node>();
+		Node propertyNode = atmosphereNode.getFirstChild();
+		while(propertyNode != null) {
+			overrideNodes.put(
+					propertyNode.getNodeName().toLowerCase(Locale.ROOT),
+					propertyNode);
+			propertyNode = propertyNode.getNextSibling();
+		}
+
+		// Apply geometry before layer-dependent values so XML child order does
+		// not change validation results.
+		String[] orderedTags = new String[] {
+				"planetradiuskm",
+				"atmosphereheightkm",
+				"rayleighcolor",
+				"rayleighstrength",
+				"rayleighscaleheightkm",
+				"miecolor",
+				"miestrength",
+				"miescaleheightkm",
+				"mieanisotropy",
+				"absorptioncolor",
+				"absorptionstrength",
+				"absorptioncenterkm",
+				"absorptionwidthkm",
+				"multiplescatteringstrength",
+				"sunintensitymultiplier",
+				"exposure",
+				"cloudlayermode"
+		};
+		for(String orderedTag : orderedTags) {
+			propertyNode = overrideNodes.get(orderedTag);
+			if(propertyNode == null)
+				continue;
+			String tag = propertyNode.getNodeName();
+			try {
+				if(tag.equalsIgnoreCase("planetRadiusKm"))
+					properties.setPlanetRadiusKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("atmosphereHeightKm"))
+					properties.setAtmosphereHeightKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("rayleighColor"))
+					properties.setRayleighColor(
+							parseAtmosphereColor(propertyNode));
+				else if(tag.equalsIgnoreCase("rayleighStrength"))
+					properties.setRayleighStrength(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("rayleighScaleHeightKm"))
+					properties.setRayleighScaleHeightKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("mieColor"))
+					properties.setMieColor(
+							parseAtmosphereColor(propertyNode));
+				else if(tag.equalsIgnoreCase("mieStrength"))
+					properties.setMieStrength(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("mieScaleHeightKm"))
+					properties.setMieScaleHeightKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("mieAnisotropy"))
+					properties.setMieAnisotropy(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("absorptionColor"))
+					properties.setAbsorptionColor(
+							parseAtmosphereColor(propertyNode));
+				else if(tag.equalsIgnoreCase("absorptionStrength"))
+					properties.setAbsorptionStrength(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("absorptionCenterKm"))
+					properties.setAbsorptionCenterKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("absorptionWidthKm"))
+					properties.setAbsorptionWidthKm(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase(
+						"multipleScatteringStrength"))
+					properties.setMultipleScatteringStrength(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase(
+						"sunIntensityMultiplier"))
+					properties.setSunIntensityMultiplier(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("exposure"))
+					properties.setExposure(
+							parseAtmosphereDouble(propertyNode));
+				else if(tag.equalsIgnoreCase("cloudLayerMode"))
+					properties.setCloudLayerMode(
+							propertyNode.getTextContent());
+			}
+			catch(IllegalArgumentException exception) {
+				warnAtmosphereXml(
+						planetName, tag,
+						exception.getMessage()
+								+ "; using the legacy-derived fallback");
+			}
+		}
+
+		return properties.sanitizedCopy(
+				"planet '" + planetName + "'");
+	}
+
+	private static double parseAtmosphereDouble(Node node) {
+		String value = node.getTextContent();
+		if(value == null || value.trim().isEmpty())
+			throw new IllegalArgumentException(
+					"value cannot be empty");
+		double parsed = Double.parseDouble(value.trim());
+		if(Double.isNaN(parsed) || Double.isInfinite(parsed))
+			throw new IllegalArgumentException(
+					"value must be finite");
+		return parsed;
+	}
+
+	private static float[] parseAtmosphereColor(Node node) {
+		String value = node.getTextContent();
+		if(value == null)
+			throw new IllegalArgumentException(
+					"RGB value cannot be empty");
+		value = value.trim();
+
+		if(value.startsWith("0x") || value.startsWith("0X")) {
+			if(value.length() != 8)
+				throw new IllegalArgumentException(
+						"hex RGB must use 0xRRGGBB");
+			int packed = Integer.parseInt(value.substring(2), 16);
+			return new float[] {
+					((packed >>> 16) & 0xff) / 255F,
+					((packed >>> 8) & 0xff) / 255F,
+					(packed & 0xff) / 255F
+			};
+		}
+
+		String[] components = value.split(",", -1);
+		if(components.length != 3)
+			throw new IllegalArgumentException(
+					"RGB value must contain exactly three components");
+		float[] color = new float[3];
+		for(int index = 0; index < color.length; index++) {
+			String component = components[index].trim();
+			if(component.isEmpty())
+				throw new IllegalArgumentException(
+						"RGB components cannot be empty");
+			color[index] = Float.parseFloat(component);
+			if(Float.isNaN(color[index])
+					|| Float.isInfinite(color[index]))
+				throw new IllegalArgumentException(
+						"RGB components must be finite");
+		}
+		return color;
+	}
+
+	private static void warnAtmosphereXml(
+			String planetName, String tag, String message) {
+		AdvancedRocketry.logger.warn(
+				"Invalid atmosphere rendering override for planet '"
+						+ planetName + "', tag '" + tag + "': "
+						+ message);
+	}
+
 
 	public StellarBody readStar(Node planetNode) {
 		StellarBody star = readSubStar(planetNode);
@@ -697,6 +899,9 @@ public class XMLPlanetLoader {
 		outputString = outputString + tabLen + "\t<orbitalPhi>" + (int)(properties.orbitalPhi) + "</orbitalPhi>\n";
 		outputString = outputString + tabLen + "\t<rotationalPeriod>" + (int)properties.rotationalPeriod + "</rotationalPeriod>\n";
 		outputString = outputString + tabLen + "\t<atmosphereDensity>" + (int)properties.getAtmosphereDensity() + "</atmosphereDensity>\n";
+		outputString = outputString + writeAtmosphereRendering(
+				properties.getAtmosphereVisualProperties(),
+				numTabs + 1);
 		
 		if(properties.getSeaLevel() != 63)
 			outputString = outputString + tabLen + "\t<seaLevel>" + properties.getSeaLevel() + "</seaLevel>\n";
@@ -759,6 +964,111 @@ public class XMLPlanetLoader {
 		
 		outputString = outputString + tabLen + "</planet>\n";
 		return outputString;
+	}
+
+	private static String writeAtmosphereRendering(
+			AtmosphereVisualProperties source, int numTabs) {
+		AtmosphereVisualProperties properties =
+				source == null ? new AtmosphereVisualProperties()
+						: source.sanitizedCopy();
+		if(!properties.hasOverrides())
+			return "";
+
+		StringBuilder tabBuilder = new StringBuilder();
+		for(int index = 0; index < numTabs; index++)
+			tabBuilder.append('\t');
+		String tabs = tabBuilder.toString();
+		String valueTabs = tabs + "\t";
+		StringBuilder output = new StringBuilder();
+		output.append(tabs)
+				.append("<atmosphereRendering version=\"")
+				.append(AtmosphereVisualProperties.SCHEMA_VERSION)
+				.append("\">\n");
+
+		if(properties.hasPlanetRadiusKm())
+			appendAtmosphereTag(output, valueTabs, "planetRadiusKm",
+					properties.getPlanetRadiusKm());
+		if(properties.hasAtmosphereHeightKm())
+			appendAtmosphereTag(output, valueTabs, "atmosphereHeightKm",
+					properties.getAtmosphereHeightKm());
+		if(properties.hasRayleighColor())
+			appendAtmosphereColor(output, valueTabs, "rayleighColor",
+					properties.getRayleighColorComponent(0),
+					properties.getRayleighColorComponent(1),
+					properties.getRayleighColorComponent(2));
+		if(properties.hasRayleighStrength())
+			appendAtmosphereTag(output, valueTabs, "rayleighStrength",
+					properties.getRayleighStrength());
+		if(properties.hasRayleighScaleHeightKm())
+			appendAtmosphereTag(
+					output, valueTabs, "rayleighScaleHeightKm",
+					properties.getRayleighScaleHeightKm());
+		if(properties.hasMieColor())
+			appendAtmosphereColor(output, valueTabs, "mieColor",
+					properties.getMieColorComponent(0),
+					properties.getMieColorComponent(1),
+					properties.getMieColorComponent(2));
+		if(properties.hasMieStrength())
+			appendAtmosphereTag(output, valueTabs, "mieStrength",
+					properties.getMieStrength());
+		if(properties.hasMieScaleHeightKm())
+			appendAtmosphereTag(output, valueTabs, "mieScaleHeightKm",
+					properties.getMieScaleHeightKm());
+		if(properties.hasMieAnisotropy())
+			appendAtmosphereTag(output, valueTabs, "mieAnisotropy",
+					properties.getMieAnisotropy());
+		if(properties.hasAbsorptionColor())
+			appendAtmosphereColor(output, valueTabs, "absorptionColor",
+					properties.getAbsorptionColorComponent(0),
+					properties.getAbsorptionColorComponent(1),
+					properties.getAbsorptionColorComponent(2));
+		if(properties.hasAbsorptionStrength())
+			appendAtmosphereTag(output, valueTabs, "absorptionStrength",
+					properties.getAbsorptionStrength());
+		if(properties.hasAbsorptionCenterKm())
+			appendAtmosphereTag(output, valueTabs, "absorptionCenterKm",
+					properties.getAbsorptionCenterKm());
+		if(properties.hasAbsorptionWidthKm())
+			appendAtmosphereTag(output, valueTabs, "absorptionWidthKm",
+					properties.getAbsorptionWidthKm());
+		if(properties.hasMultipleScatteringStrength())
+			appendAtmosphereTag(
+					output, valueTabs, "multipleScatteringStrength",
+					properties.getMultipleScatteringStrength());
+		if(properties.hasSunIntensityMultiplier())
+			appendAtmosphereTag(
+					output, valueTabs, "sunIntensityMultiplier",
+					properties.getSunIntensityMultiplier());
+		if(properties.hasExposure())
+			appendAtmosphereTag(output, valueTabs, "exposure",
+					properties.getExposure());
+		if(properties.hasCloudLayerMode()) {
+			output.append(valueTabs)
+					.append("<cloudLayerMode>")
+					.append(properties.getCloudLayerMode().name())
+					.append("</cloudLayerMode>\n");
+		}
+
+		output.append(tabs).append("</atmosphereRendering>\n");
+		return output.toString();
+	}
+
+	private static void appendAtmosphereTag(
+			StringBuilder output, String tabs,
+			String tag, double value) {
+		output.append(tabs).append('<').append(tag).append('>')
+				.append(value)
+				.append("</").append(tag).append(">\n");
+	}
+
+	private static void appendAtmosphereColor(
+			StringBuilder output, String tabs, String tag,
+			float red, float green, float blue) {
+		output.append(tabs).append('<').append(tag).append('>')
+				.append(red).append(',')
+				.append(green).append(',')
+				.append(blue)
+				.append("</").append(tag).append(">\n");
 	}
 
 	private static String escapeXml(String value) {

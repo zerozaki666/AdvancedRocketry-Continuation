@@ -196,6 +196,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	//Gas giants DO NOT need a dimension registered to them
 	public float[] skyColor;
 	public float[] fogColor;
+	private AtmosphereVisualProperties atmosphereVisualProperties;
 	public float[] ringColor;
 	public float gravitationalMultiplier;
 	public float mass;
@@ -336,7 +337,11 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	@Override
 	public Object clone() {
 		try {
-			return super.clone();
+			DimensionProperties copy = (DimensionProperties)super.clone();
+			copy.atmosphereVisualProperties =
+					new AtmosphereVisualProperties(
+							atmosphereVisualProperties);
+			return copy;
 		} catch(CloneNotSupportedException e) {
 			return null;
 		}
@@ -358,6 +363,7 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 	public void resetProperties() {
 		fogColor = new float[] {1f,1f,1f};
 		skyColor = new float[] {1f,1f,1f};
+		atmosphereVisualProperties = new AtmosphereVisualProperties();
 		sunriseSunsetColors = new float[] {.7f,.2f,.2f,1};
 		ringColor = new float[] {.4f, .4f, .7f};
 		gravitationalMultiplier = 1;
@@ -378,6 +384,32 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 		fillerBlock = null;
 		generatorType = 0;
 		spawnableEntities=new LinkedList<>();
+	}
+
+	/**
+	 * Returns this dimension's mutable optional atmosphere-rendering
+	 * overrides.  Callers retaining data beyond the current operation should
+	 * use {@link #getAtmosphereVisualPropertiesSnapshot()}.
+	 */
+	public AtmosphereVisualProperties getAtmosphereVisualProperties() {
+		if(atmosphereVisualProperties == null)
+			atmosphereVisualProperties =
+					new AtmosphereVisualProperties();
+		return atmosphereVisualProperties;
+	}
+
+	/**
+	 * Replaces the optional rendering overrides with a defensive deep copy.
+	 */
+	public void setAtmosphereVisualProperties(
+			AtmosphereVisualProperties properties) {
+		atmosphereVisualProperties =
+				new AtmosphereVisualProperties(properties);
+	}
+
+	public AtmosphereVisualProperties.Snapshot
+			getAtmosphereVisualPropertiesSnapshot() {
+		return getAtmosphereVisualProperties().snapshot();
 	}
 
 	public List<Fluid> getHarvestableGasses() {
@@ -1246,6 +1278,13 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 	public void readFromNBT(NBTTagCompound nbt) {
 		NBTTagList list;
+		String savedName = nbt.hasKey("name")
+				? nbt.getString("name") : getName();
+		String atmosphereContext = "planet '" + savedName
+				+ "' (dimension " + getId() + ")";
+		atmosphereVisualProperties =
+				AtmosphereVisualProperties.readFromParentNBT(
+						nbt, atmosphereContext);
 
 		if(nbt.hasKey("skyColor")) {
 			list = nbt.getTagList("skyColor", NBT.TAG_FLOAT);
@@ -1481,6 +1520,14 @@ public class DimensionProperties implements Cloneable, IDimensionProperties {
 
 	public void writeToNBT(NBTTagCompound nbt) {
 		NBTTagList list;
+		nbt.removeTag(AtmosphereVisualProperties.NBT_KEY);
+		if(getAtmosphereVisualProperties().hasOverrides()) {
+			NBTTagCompound atmosphereRender = new NBTTagCompound();
+			getAtmosphereVisualProperties().writeToNBT(atmosphereRender);
+			nbt.setTag(
+					AtmosphereVisualProperties.NBT_KEY,
+					atmosphereRender);
+		}
 
 		if(skyColor != null) {
 			list = new NBTTagList();

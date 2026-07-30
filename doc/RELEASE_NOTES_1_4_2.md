@@ -66,6 +66,21 @@
   或 `advancedVFX=false` 时会安全降级，并在日志中输出带
   `[BlackHoleRenderer]` 的原因。
 
+### 写实大气渲染
+
+- 以球形指数大气、Rayleigh/Mie 单次散射、光学深度 LUT 和有界 raymarch
+  取代旧的五层半透明球壳与平面辉光。该效果是面向游戏实时渲染的
+  **physically based approximation**，不代表科研级大气模拟精度。
+- 空间视角现在会根据主恒星方向显示明暗交界、背光边缘辉光与地表遮挡；地表和
+  近地平线视角会连续呈现昼夜、暮光、星空可见度和随高度变化的大气柱。
+- 现有 `planetDefs` 的 `atmosphereDensity`、`skyColor`、`fogColor` 和气态巨行星
+  标记继续驱动默认视觉，同时可用可选 `atmosphereRendering` 字段覆盖散射、
+  吸收、尺度高度、行星/大气半径、太阳强度及云层参数。
+- 新增 `AUTO`、`FAST`、`HIGH`、`LEGACY` 和 `OFF` 大气渲染模式；旧存档、未提供
+  新字段的星球和玩法侧大气压力语义保持不变。
+- GLSL 1.20 或 LUT 不可用时会使用连续球壳 fallback；检测到外部 shader program
+  时会安全跳过内部 pass，避免破坏 shader pack、HUD 或后续世界渲染状态。
+
 ## 空间站行星渲染
 
 - 将空间站下方的 LEO 平面改为 64×32 细分球体，并将大气层同步改为球壳。
@@ -98,6 +113,13 @@
 | Client | `blackHoleMaxShaderBodies` | `2` | 单次 celestial pass 的 shader 黑洞上限 |
 | Performance | `blackHoleShaderStepsFast` | `16` | FAST 的有界近似步数 |
 | Performance | `blackHoleShaderStepsHigh` | `32` | HIGH 的有界近似步数 |
+| Client | `atmosphereRenderMode` | `AUTO` | `AUTO`、`FAST`、`HIGH`、`LEGACY` 或 `OFF` |
+| Client | `atmosphereMaxShaderBodies` | `2` | 单次 celestial pass 的 raymarched 大气上限 |
+| Client | `atmosphereMinShaderRadiusPixels` | `6` | 启用 atmosphere shader 的最小投影半径 |
+| Client | `atmosphereEnableCloudLayer` | `true` | profile 允许时独立渲染云层 |
+| Client | `atmosphereDebugView` | `NONE` | 大气诊断输出；正常游玩保持 `NONE` |
+| Performance | `atmosphereOpticalDepthLutWidth` | `128` | CPU 光学深度 LUT 宽度 |
+| Performance | `atmosphereOpticalDepthLutHeight` | `64` | CPU 光学深度 LUT 高度 |
 | General | `blackHoleFreeSpaceInteraction` | `VISUAL_ONLY` | 自由空间危险行为；`CAPTURE` 为破坏性 opt-in |
 | General | `blackHoleGravityConstant` | `0.01` | 自由空间玩法引力系数 |
 | General | `blackHoleMaxAcceleration` | `0.05` | 每 tick 最大黑洞加速度 |
@@ -132,8 +154,12 @@
   多轮 playtest；最后一轮吸积盘稳定化提交仍需要最终游戏内回归。
 - Java 与 GLSL 1.20 解析、投影/culling、Kerr LUT、动画周期、球体网格和 GL
   state 契约已完成静态验证。
-- 当前开发环境无法取得 Gradle 7.4.2 分发包，因此未执行完整的
-  `./gradlew clean build`。
+- 写实大气的数学、光学深度 LUT、profile/NBT、零光照语义和天体方向共 29 项
+  回归测试通过；6 个 GLSL 1.20 大气 shader 也已通过离线编译验证。
+- 当前开发环境缺少同级 `libVulpes-Continuation` 工程，且无法取得 Gradle
+  7.4.2 分发包，因此未执行完整的 `./gradlew clean build`。
+- 写实大气仍需完成游戏内视觉矩阵、1920×1080 GPU/CPU 性能门槛、真实 GL2
+  驱动、OptiFine/Angelica、外部 shader pack 和 context recreation 实机验收。
 - 尚未完成 dedicated server、完整多人，以及 Angelica、外部 shader pack、
   MSAA/FBO 与多 GPU 的完整组合矩阵验收。
 

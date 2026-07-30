@@ -18,6 +18,7 @@ import org.xml.sax.SAXException;
 import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
+import zmaster587.advancedRocketry.api.dimension.solar.BlackHoleProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.IGalaxy;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
@@ -101,7 +102,8 @@ public class XMLPlanetLoader {
 			if(nameNode != null && !nameNode.getNodeValue().isEmpty()) {
 				try {
 					if(nameNode.getTextContent().isEmpty()) throw new NumberFormatException();
-					properties.setId(Integer.parseInt(nameNode.getTextContent()));
+					int explicitId = Integer.parseInt(nameNode.getTextContent());
+					properties.setId(explicitId);
 					//We're not using the offset so decrement to prepare for next planet
 					offset--;
 				} catch (NumberFormatException e) {
@@ -551,6 +553,9 @@ public class XMLPlanetLoader {
 			}
 			
 			nameNode = planetNode.getAttributes().getNamedItem("seperation");
+			if(nameNode == null)
+				nameNode = planetNode.getAttributes()
+						.getNamedItem("separation");
 			if(nameNode != null && !nameNode.getNodeValue().isEmpty()) {
 				try {
 					star.setStarSeperation(Float.parseFloat(nameNode.getNodeValue()));
@@ -559,6 +564,8 @@ public class XMLPlanetLoader {
 				}
 			}
 		}
+
+		readBlackHoleAttributes(planetNode, star);
 		
 		return star;
 	}
@@ -608,12 +615,21 @@ public class XMLPlanetLoader {
 		Collection<StellarBody> stars = galaxy.getStars();
 
 		for(StellarBody star : stars) {
-			outputString = outputString + "\t<star name=\"" + star.getName() + "\" temp=\"" + star.getTemperature() + "\" coordinateSchema=\"xyz\" x=\"" + star.getPosX()
-					+ "\" y=\"" + star.getPosY() + "\" z=\"" + star.getPosZ() + "\" size=\"" + star.getSize() + "\" numPlanets=\"0\" numGasGiants=\"0\">\n";
+			outputString = outputString + "\t<star name=\""
+					+ escapeXml(star.getName()) + "\" temp=\""
+					+ star.getTemperature()
+					+ "\" coordinateSchema=\"xyz\" x=\"" + star.getPosX()
+					+ "\" y=\"" + star.getPosY() + "\" z=\""
+					+ star.getPosZ() + "\" size=\"" + star.getSize()
+					+ "\" numPlanets=\"0\" numGasGiants=\"0\""
+					+ writeBlackHoleAttributes(star) + ">\n";
 
 			for(StellarBody star2 : star.getSubStars()) {
-				outputString = outputString + "\t\t<star temp=\"" + star2.getTemperature() + 
-						"\" size=\"" + star2.getSize() + "\" seperation=\"" + star2.getStarSeperation() + "\" />\n";
+				outputString = outputString + "\t\t<star temp=\""
+						+ star2.getTemperature() + "\" size=\""
+						+ star2.getSize() + "\" seperation=\""
+						+ star2.getStarSeperation() + "\""
+						+ writeBlackHoleAttributes(star2) + " />\n";
 
 			}
 			
@@ -638,9 +654,12 @@ public class XMLPlanetLoader {
 			tabLen += "\t";
 		}
 
-		outputString = tabLen + "<planet name=\"" + properties.getName() + "\" DIMID=\"" + properties.getId() + "\"" +
+		outputString = tabLen + "<planet name=\""
+				+ escapeXml(properties.getName()) + "\" DIMID=\""
+				+ properties.getId() + "\"" +
 				(properties.isNativeDimension ? "" : " dimMapping=\"\"") + 
-				(properties.customIcon.isEmpty() ? "" : " customIcon=\"" + properties.customIcon + "\"") + ">\n";
+				(properties.customIcon.isEmpty() ? "" : " customIcon=\""
+						+ escapeXml(properties.customIcon) + "\"") + ">\n";
 
 
 		outputString = outputString + tabLen + "\t<isKnown>" + Configuration.initiallyKnownPlanets.contains(properties.getId()) + "</isKnown>\n";	
@@ -743,11 +762,200 @@ public class XMLPlanetLoader {
 	}
 
 	private static String escapeXml(String value) {
+		if(value == null)
+			return "";
 		return value.replace("&", "&amp;")
 				.replace("\"", "&quot;")
 				.replace("<", "&lt;")
 				.replace(">", "&gt;")
 				.replace("'", "&apos;");
+	}
+
+	private static void readBlackHoleAttributes(Node starNode,
+			StellarBody star) {
+		if(!starNode.hasAttributes())
+			return;
+		Node blackHoleNode = starNode.getAttributes().getNamedItem("blackHole");
+		if(blackHoleNode == null)
+			return;
+
+		String blackHoleValue = blackHoleNode.getNodeValue();
+		if(!"true".equalsIgnoreCase(blackHoleValue)
+				&& !"false".equalsIgnoreCase(blackHoleValue)) {
+			AdvancedRocketry.logger.warn("Invalid blackHole value '"
+					+ blackHoleValue + "' for star " + star.getName()
+					+ "; using false");
+			return;
+		}
+
+		star.setBlackHole(Boolean.parseBoolean(blackHoleValue));
+		if(!star.isBlackHole())
+			return;
+
+		BlackHoleProperties properties =
+				star.getOrCreateBlackHoleProperties();
+		readBlackHoleDouble(starNode, star, "blackHoleMass",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setMass(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star, "blackHoleSpin",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setSpin(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star, "blackHoleAccretionRate",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setAccretionRate(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star,
+				"blackHoleAxisInclination", new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setSpinAxisInclinationDeg(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star, "blackHoleAxisYaw",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setSpinAxisYawDeg(value);
+					}
+				});
+
+		Node inner = starNode.getAttributes().getNamedItem(
+				"blackHoleDiskInnerRadiusOverM");
+		if(inner != null) {
+			if("auto".equalsIgnoreCase(inner.getNodeValue()))
+				properties.clearDiskInnerRadiusOverride();
+			else
+				readBlackHoleDouble(starNode, star,
+						"blackHoleDiskInnerRadiusOverM",
+						new BlackHoleValueSetter() {
+							@Override
+							public void set(BlackHoleProperties target,
+									double value) {
+								target.setDiskInnerRadiusOverM(value);
+							}
+						});
+		}
+		readBlackHoleDouble(starNode, star,
+				"blackHoleDiskOuterRadiusOverM",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setDiskOuterRadiusOverM(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star, "blackHoleVisualScale",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setVisualScale(value);
+					}
+				});
+		readBlackHoleDouble(starNode, star, "blackHoleCaptureRadius",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setCaptureRadius(value);
+					}
+				});
+		if(starNode.getAttributes().getNamedItem(
+				"blackHoleInfluenceRadius") == null) {
+			double capture = properties.getCaptureRadius();
+			properties.setInfluenceRadius(capture
+					> Double.MAX_VALUE / 16D
+					? Double.MAX_VALUE : capture * 16D);
+		}
+		readBlackHoleDouble(starNode, star, "blackHoleInfluenceRadius",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setInfluenceRadius(value);
+					}
+				});
+		if(starNode.getAttributes().getNamedItem(
+				"blackHoleWarningRadius") == null) {
+			double influence = properties.getInfluenceRadius();
+			properties.setWarningRadius(influence
+					> Double.MAX_VALUE / 1.25D
+					? Double.MAX_VALUE : influence * 1.25D);
+		}
+		readBlackHoleDouble(starNode, star, "blackHoleWarningRadius",
+				new BlackHoleValueSetter() {
+					@Override
+					public void set(BlackHoleProperties target, double value) {
+						target.setWarningRadius(value);
+					}
+				});
+	}
+
+	private static void readBlackHoleDouble(Node starNode, StellarBody star,
+			String attribute, BlackHoleValueSetter setter) {
+		Node valueNode = starNode.getAttributes().getNamedItem(attribute);
+		if(valueNode == null)
+			return;
+		try {
+			double value = Double.parseDouble(valueNode.getNodeValue());
+			setter.set(star.getOrCreateBlackHoleProperties(), value);
+		}
+		catch(NumberFormatException exception) {
+			AdvancedRocketry.logger.warn("Invalid " + attribute + " value '"
+					+ valueNode.getNodeValue() + "' for star "
+					+ star.getName() + "; using fallback");
+		}
+		catch(IllegalArgumentException exception) {
+			AdvancedRocketry.logger.warn("Invalid " + attribute + " value '"
+					+ valueNode.getNodeValue() + "' for star "
+					+ star.getName() + "; using fallback");
+		}
+	}
+
+	private static String writeBlackHoleAttributes(StellarBody star) {
+		if(!star.isBlackHole())
+			return " blackHole=\"false\"";
+		BlackHoleProperties properties =
+				star.getOrCreateBlackHoleProperties();
+		StringBuilder builder = new StringBuilder(" blackHole=\"true\"");
+		builder.append(" blackHoleMass=\"").append(properties.getMass())
+				.append('"');
+		builder.append(" blackHoleSpin=\"").append(properties.getSpin())
+				.append('"');
+		builder.append(" blackHoleAccretionRate=\"")
+				.append(properties.getAccretionRate()).append('"');
+		builder.append(" blackHoleAxisInclination=\"")
+				.append(properties.getSpinAxisInclinationDeg()).append('"');
+		builder.append(" blackHoleAxisYaw=\"")
+				.append(properties.getSpinAxisYawDeg()).append('"');
+		builder.append(" blackHoleDiskInnerRadiusOverM=\"");
+		if(properties.hasDiskInnerRadiusOverride())
+			builder.append(properties.getDiskInnerRadiusOverM());
+		else
+			builder.append("auto");
+		builder.append('"');
+		builder.append(" blackHoleDiskOuterRadiusOverM=\"")
+				.append(properties.getDiskOuterRadiusOverM()).append('"');
+		builder.append(" blackHoleVisualScale=\"")
+				.append(properties.getVisualScale()).append('"');
+		builder.append(" blackHoleCaptureRadius=\"")
+				.append(properties.getCaptureRadius()).append('"');
+		builder.append(" blackHoleInfluenceRadius=\"")
+				.append(properties.getInfluenceRadius()).append('"');
+		builder.append(" blackHoleWarningRadius=\"")
+				.append(properties.getWarningRadius()).append('"');
+		return builder.toString();
+	}
+
+	private interface BlackHoleValueSetter {
+		void set(BlackHoleProperties target, double value);
 	}
 
 	public static class DimensionPropertyCoupling {

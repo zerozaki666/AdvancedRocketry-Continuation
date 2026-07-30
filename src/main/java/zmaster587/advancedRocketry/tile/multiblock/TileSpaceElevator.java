@@ -24,6 +24,8 @@ import zmaster587.advancedRocketry.api.AdvancedRocketryItems;
 import zmaster587.advancedRocketry.entity.EntityElevatorCapsule;
 import zmaster587.advancedRocketry.inventory.modules.ModuleStellarBackground;
 import zmaster587.advancedRocketry.item.ItemSpaceElevatorChip;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.util.DimensionBlockPosition;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.api.LibVulpesBlocks;
@@ -196,10 +198,20 @@ public class TileSpaceElevator extends TileMultiPowerConsumer implements ILinkab
 
 	public static boolean isDstValid(World worldObj, DimensionBlockPosition pos, BlockPosition myPos) {
 		
-		if(pos == null || pos.pos == null)
+		if(worldObj == null || worldObj.provider == null
+				|| pos == null || pos.pos == null || myPos == null
+				|| worldObj.provider.dimensionId == pos.dimid)
 			return false;
 
-		return worldObj.provider.dimensionId != pos.dimid && zmaster587.advancedRocketry.dimension.DimensionManager.getEffectiveDimId(pos.dimid, pos.pos.x, pos.pos.z) == zmaster587.advancedRocketry.dimension.DimensionManager.getEffectiveDimId(worldObj, myPos.x, myPos.z);
+		StationTargetResolver resolver = StationTargetResolver.getInstance();
+		StationTarget destination = resolver.resolveCurrentBody(pos.dimid,
+				pos.pos.x, pos.pos.z);
+		StationTarget source = resolver.resolveCurrentBody(worldObj,
+				myPos.x, myPos.z);
+		return destination.getKind() == StationTarget.Kind.DIMENSION
+				&& source.getKind() == StationTarget.Kind.DIMENSION
+				&& destination.getDimensionProperties().getId()
+						== source.getDimensionProperties().getId();
 	}
 
 	public boolean attemptLaunch() {

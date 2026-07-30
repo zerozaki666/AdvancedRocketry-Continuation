@@ -5,7 +5,6 @@ import java.util.logging.Logger;
 
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
-import zmaster587.advancedRocketry.dimension.DimensionProperties;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
 import zmaster587.libVulpes.network.BasePacket;
@@ -105,14 +104,12 @@ public class PacketSpaceStationInfo extends BasePacket {
 			if( iObject == null ) {
 				ISpaceObject object = SpaceObjectManager.getSpaceManager().getNewSpaceObjectFromIdentifier(clazzId);
 				object.readFromNbt(nbt);
-				object.setProperties(DimensionProperties.createFromNBT(stationNumber, nbt));
 				((SpaceObject)object).setForwardDirection(ForgeDirection.values()[direction]);
 				((SpaceObject)object).hasWarpCores = hasWarpCores;
 				SpaceObjectManager.getSpaceManager().registerSpaceObjectClient(object, object.getOrbitingPlanetId(), stationNumber);
 			}
 			else {
 				iObject.readFromNbt(nbt);
-				//iObject.setProperties(DimensionProperties.createFromNBT(stationNumber, nbt));
 				((SpaceObject)iObject).setForwardDirection(ForgeDirection.values()[direction]);
 				((SpaceObject)iObject).setFuelAmount(fuelAmt);
 				((SpaceObject)iObject).hasWarpCores = hasWarpCores;

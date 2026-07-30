@@ -68,6 +68,7 @@ public class AdvancedRocketryBlocks {
 	public static Block blockFluidPipe;
 	public static Block blockDataPipe;
 	public static Block blockMicrowaveReciever;
+	public static Block blockBlackHoleGenerator;
 	public static Block blockSolarPanel;
 	public static Block blockSuitWorkStation;
 	public static Block blockLoader;

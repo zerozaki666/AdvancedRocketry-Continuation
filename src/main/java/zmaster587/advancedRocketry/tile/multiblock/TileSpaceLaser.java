@@ -293,6 +293,7 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 				laserSat.deactivateLaser();
 				this.setFinished(true);
 				this.setRunning(false);
+				releaseChunkTicket();
 			}
 			else
 				if(hasPowerForOperation() && isReadyForOperation() && laserSat.isAlive() && !laserSat.getJammed()) {
@@ -306,6 +307,7 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 		if(laserSat.isFinished()) {
 			setRunning(false);
 			laserSat.deactivateLaser();
+			releaseChunkTicket();
 
 			if(!laserSat.getJammed()) {
 				if(mode == MODE.SINGLE) 
@@ -357,7 +359,7 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 		if(laserSat != null) {
 			laserSat.deactivateLaser();
 		}
-		ForgeChunkManager.releaseTicket(ticket);
+		releaseChunkTicket();
 	}
 
 	@Override
@@ -366,7 +368,15 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 		if(laserSat != null) {
 			laserSat.deactivateLaser();
 		}
+		releaseChunkTicket();
 		isRunning = false;
+	}
+
+	private void releaseChunkTicket() {
+		if(ticket != null) {
+			ForgeChunkManager.releaseTicket(ticket);
+			ticket = null;
+		}
 	}
 	
 	@Override
@@ -541,6 +551,7 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 			}
 
 			setRunning(false);
+			releaseChunkTicket();
 		} else if(!laserSat.isAlive() && !finished && !laserSat.getJammed() && worldObj.isBlockIndirectlyGettingPowered(xCoord, yCoord, zCoord) && canMachineSeeEarth()) {
 
 			//Laser will be on at this point
@@ -564,6 +575,8 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 			}
 
 			setRunning(laserSat.activateLaser(orbitWorld, laserX, laserZ));
+			if(!isRunning)
+				releaseChunkTicket();
 		}
 
 		if(!this.worldObj.isRemote)

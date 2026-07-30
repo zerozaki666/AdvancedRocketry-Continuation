@@ -27,6 +27,7 @@ public final class SimUniverse {
 
 	private final Map<String, SimBody> bodies = new HashMap<String, SimBody>();
 	private final List<SimBody> roots = new ArrayList<SimBody>();
+	private long lastTickWorldTime = Long.MIN_VALUE;
 
 	public static SimUniverse getInstance() {
 		return INSTANCE;
@@ -35,6 +36,7 @@ public final class SimUniverse {
 	public synchronized void init(List<? extends ISimStellar> configs) {
 		bodies.clear();
 		roots.clear();
+		lastTickWorldTime = Long.MIN_VALUE;
 
 		for(ISimStellar config : configs) {
 			if(config == null) {
@@ -141,6 +143,7 @@ public final class SimUniverse {
 	public synchronized void stop() {
 		bodies.clear();
 		roots.clear();
+		lastTickWorldTime = Long.MIN_VALUE;
 	}
 
 	public synchronized boolean isInitialized() {
@@ -148,8 +151,11 @@ public final class SimUniverse {
 	}
 
 	public synchronized void tick(long worldTime) {
+		if(worldTime == lastTickWorldTime)
+			return;
 		for(SimBody root : roots)
 			root.update(worldTime);
+		lastTickWorldTime = worldTime;
 	}
 
 	public synchronized SimBody getBody(String id) {
@@ -160,12 +166,28 @@ public final class SimUniverse {
 		return new ArrayList<SimBody>(bodies.values());
 	}
 
+	/**
+	 * Returns a deep immutable snapshot suitable for render and collision code
+	 * which must not retain live {@link SimBody} instances across a tick.
+	 */
+	public synchronized List<SimBodySnapshot> getBodySnapshots() {
+		List<SimBodySnapshot> snapshots =
+				new ArrayList<SimBodySnapshot>(bodies.size());
+		for(SimBody body : bodies.values())
+			snapshots.add(body.snapshot());
+		return snapshots;
+	}
+
 	public static final class SimBody {
 		private final ISimStellar config;
 		private final List<SimBody> children = new ArrayList<SimBody>();
 		private SimBody parent;
 		private double angularVelocity;
+		private boolean hasPosition;
 
+		private double previousX;
+		private double previousY;
+		private double previousZ;
 		public double x;
 		public double y;
 		public double z;
@@ -186,6 +208,9 @@ public final class SimUniverse {
 		}
 
 		private void update(long worldTime) {
+			double oldX = x;
+			double oldY = y;
+			double oldZ = z;
 			if(parent == null) {
 				x = config.getStaticX();
 				y = SPACE_Y_ORIGIN + config.getStaticY();
@@ -206,9 +231,66 @@ public final class SimUniverse {
 
 			if(Double.isNaN(y) || Double.isInfinite(y) || y < MIN_BODY_Y)
 				y = MIN_BODY_Y;
+			if(!finite(x))
+				x = 0D;
+			if(!finite(z))
+				z = 0D;
+
+			if(hasPosition) {
+				previousX = oldX;
+				previousY = oldY;
+				previousZ = oldZ;
+			}
+			else {
+				previousX = x;
+				previousY = y;
+				previousZ = z;
+				hasPosition = true;
+			}
 
 			for(SimBody child : children)
 				child.update(worldTime);
+		}
+
+		private SimBodySnapshot snapshot() {
+			SimBodyType type = inferredType(config);
+			double warningRadius = 0D;
+			double influenceRadius = 0D;
+			double captureRadius = 0D;
+			if(config instanceof ISimHazard) {
+				ISimHazard hazard = (ISimHazard)config;
+				captureRadius = positiveFinite(hazard.getCaptureRadius());
+				influenceRadius = Math.max(captureRadius,
+						positiveFinite(hazard.getInfluenceRadius()));
+				warningRadius = Math.max(influenceRadius,
+						positiveFinite(hazard.getWarningRadius()));
+			}
+			return new SimBodySnapshot(config.getID(), config.getName(), type,
+					config.getDimensionId(), previousX, previousY, previousZ,
+					x, y, z, positiveFinite(config.getMass()),
+					positiveFinite(config.getSize()), config.isLandable(),
+					warningRadius, influenceRadius, captureRadius);
+		}
+
+		private static SimBodyType inferredType(ISimStellar config) {
+			if(config instanceof ITypedSimStellar) {
+				SimBodyType explicit =
+						((ITypedSimStellar)config).getBodyType();
+				if(explicit != null)
+					return explicit;
+			}
+			if(config.isStar())
+				return SimBodyType.STAR;
+			return config.isLandable()
+					? SimBodyType.PLANET : SimBodyType.GAS_GIANT;
+		}
+
+		private static double positiveFinite(double value) {
+			return finite(value) && value > 0D ? value : 0D;
+		}
+
+		private static boolean finite(double value) {
+			return !Double.isNaN(value) && !Double.isInfinite(value);
 		}
 
 		private static double normalizeAngle(double angle) {

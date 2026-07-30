@@ -18,7 +18,6 @@ import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.util.IBlobHandler;
 import zmaster587.advancedRocketry.atmosphere.AtmosphereHandler;
 import zmaster587.advancedRocketry.atmosphere.AtmosphereType;
-import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.advancedRocketry.api.AreaBlob;
 import zmaster587.libVulpes.LibVulpes;
@@ -303,7 +302,10 @@ public class TileOxygenVent extends TileInventoriedRFConsumerTank implements IBl
 					}
 				}
 				else if(hasFluid){
-					AtmosphereHandler.getOxygenHandler(this.worldObj.provider.dimensionId).setAtmosphereType(this, DimensionManager.getInstance().getDimensionProperties(this.worldObj.provider.dimensionId).getAtmosphere());
+					AtmosphereHandler handler = AtmosphereHandler.getOxygenHandler(
+							this.worldObj.provider.dimensionId);
+					handler.setAtmosphereType(this,
+							handler.getDefaultAtmosphereType());
 
 					deactivateAdjblocks();
 

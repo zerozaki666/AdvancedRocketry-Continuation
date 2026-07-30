@@ -25,6 +25,8 @@ import net.minecraftforge.common.ForgeChunkManager.Type;
 import net.minecraftforge.common.util.ForgeDirection;
 import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.entity.EntityItemAbducted;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.api.LibVulpesBlocks;
 import zmaster587.libVulpes.block.BlockMeta;
@@ -280,13 +282,15 @@ public class TileRailgun extends TileMultiPowerConsumer implements IInventory, I
 				
 				dimId = getDestDimId();
 
-				if(dimId != -1) {
-					World world = DimensionManager.getWorld(dimId);
-					TileEntity tile;
-					if(world != null && (tile = world.getTileEntity(pos.x, pos.y, pos.z)) instanceof TileRailgun && ((TileRailgun)tile).canRecieveCargo(tfrStack) &&
-							(zmaster587.advancedRocketry.dimension.DimensionManager.getInstance().areDimensionsInSamePlanetMoonSystem(this.worldObj.provider.dimensionId,
-									zmaster587.advancedRocketry.dimension.DimensionManager.getEffectiveDimId(world, tile.xCoord, tile.zCoord).getId()) ||
-									zmaster587.advancedRocketry.dimension.DimensionManager.getEffectiveDimId(world, tile.xCoord, tile.zCoord).getId() == zmaster587.advancedRocketry.dimension.DimensionManager.getEffectiveDimId(this.worldObj, this.xCoord, this.zCoord).getId()) ) {
+					if(dimId != -1) {
+						World world = DimensionManager.getWorld(dimId);
+						TileEntity tile;
+						if(world != null
+								&& (tile = world.getTileEntity(pos.x, pos.y,
+										pos.z)) instanceof TileRailgun
+								&& ((TileRailgun)tile).canRecieveCargo(tfrStack)
+								&& canTransferBetweenCurrentBodies(world,
+										tile.xCoord, tile.zCoord)) {
 
 						((TileRailgun)tile).onRecieveCargo(tfrStack);
 						inv2.setInventorySlotContents(index, null);
@@ -303,6 +307,27 @@ public class TileRailgun extends TileMultiPowerConsumer implements IInventory, I
 			}
 		}
 		return false;
+	}
+
+	private boolean canTransferBetweenCurrentBodies(
+			World destinationWorld, int destinationX, int destinationZ) {
+		StationTargetResolver resolver = StationTargetResolver.getInstance();
+		StationTarget source = resolver.resolveCurrentBody(
+				worldObj, xCoord, zCoord);
+		StationTarget destination = resolver.resolveCurrentBody(
+				destinationWorld, destinationX, destinationZ);
+		if(source.getKind() != StationTarget.Kind.DIMENSION
+				|| destination.getKind() != StationTarget.Kind.DIMENSION
+				|| source.getDimensionProperties() == null
+				|| destination.getDimensionProperties() == null)
+			return false;
+
+		int sourceId = source.getDimensionProperties().getId();
+		int destinationId = destination.getDimensionProperties().getId();
+		return sourceId == destinationId
+				|| zmaster587.advancedRocketry.dimension.DimensionManager
+						.getInstance().areDimensionsInSamePlanetMoonSystem(
+								sourceId, destinationId);
 	}
 
 	public boolean canRecieveCargo(ItemStack stack) {

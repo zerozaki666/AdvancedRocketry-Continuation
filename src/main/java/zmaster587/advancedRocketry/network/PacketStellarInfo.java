@@ -12,6 +12,7 @@ import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.dimension.sim.AdvancedRocketryUniverse;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.network.BasePacket;
 
 public class PacketStellarInfo extends BasePacket {
@@ -76,6 +77,7 @@ public class PacketStellarInfo extends BasePacket {
 				DimensionManager.getInstance().addStar(star);
 			}
 		}
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 
 	@Override

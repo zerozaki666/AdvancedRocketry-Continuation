@@ -15,6 +15,7 @@ import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.nbt.NBTTagList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.DamageSource;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.ChatComponentTranslation;
@@ -30,6 +31,7 @@ import zmaster587.advancedRocketry.api.RocketEvent.RocketLaunchEvent;
 import zmaster587.advancedRocketry.api.RocketEvent.RocketPreLaunchEvent;
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
+import zmaster587.advancedRocketry.api.event.BlackHoleCaptureEvent;
 import zmaster587.advancedRocketry.api.fuel.FuelRegistry.FuelType;
 import zmaster587.advancedRocketry.api.satellite.SatelliteBase;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
@@ -52,6 +54,8 @@ import zmaster587.advancedRocketry.mission.MissionOreMining;
 import zmaster587.advancedRocketry.network.PacketSatellite;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.thread.RocketStructureThread;
 import zmaster587.advancedRocketry.tile.TileGuidanceComputer;
 import zmaster587.advancedRocketry.tile.hatch.TileSatelliteHatch;
@@ -96,8 +100,18 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 	private static int BUTTON_ID_OFFSET = 25;
 	private static final int STATION_LOC_OFFSET = 50;
 	private static final double FREE_SPACE_FLOOR = 0D;
+	private static final DamageSource BLACK_HOLE_DAMAGE =
+			new DamageSource("blackHole").setDamageBypassesArmor()
+					.setDamageIsAbsolute()
+					.setDamageAllowedInCreativeMode();
 	private ModuleText landingPadDisplayText;
 	protected long lastWorldTickTicked;
+	private double previousFreeSpaceX;
+	private double previousFreeSpaceY;
+	private double previousFreeSpaceZ;
+	private boolean hasPreviousFreeSpacePosition;
+	private long lastBlackHoleCaptureTick = Long.MIN_VALUE;
+	private String lastBlackHoleCaptureBody;
 
 	private SatelliteBase satallite;
 	protected int destinationDimId;
@@ -232,7 +246,10 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				Vector3F<Float> vec = storage.getDestinationCoordinates(dimid, false);
 				if(vec != null) {
 
-					ISpaceObject obj = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords((int)((float)vec.x),(int)((float)vec.x));
+					ISpaceObject obj = SpaceObjectManager.getSpaceManager()
+							.getSpaceStationFromBlockCoords(
+									(int)((float)vec.x),
+									(int)((float)vec.z));
 
 					if(obj != null) {
 						displayStr =  LibVulpes.proxy.getLocalizedString("msg.entity.rocket.station") + obj.getId();
@@ -244,8 +261,16 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					}
 				}
 			}
-			else if(dimid != -1 && dimid != SpaceObjectManager.WARPDIMID) {
-				displayStr = DimensionManager.getInstance().getDimensionProperties(dimid).getName();
+			else if(dimid != -1
+					&& dimid != SpaceObjectManager.WARPDIMID) {
+				StationTarget target = StationTargetResolver.getInstance()
+						.resolve(dimid);
+				if(target.getKind() == StationTarget.Kind.BLACK_HOLE_STAR
+						&& target.getStellarBody() != null)
+					displayStr = target.getStellarBody().getName();
+				else if(target.getKind() == StationTarget.Kind.DIMENSION
+						&& target.getDimensionProperties() != null)
+					displayStr = target.getDimensionProperties().getName();
 			}
 		}
 
@@ -479,6 +504,13 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 	@Override
 	public void onUpdate() {
+		if(worldObj != null && !worldObj.isRemote
+				&& worldObj.provider.dimensionId == Configuration.freeSpaceDimId) {
+			previousFreeSpaceX = posX;
+			previousFreeSpaceY = posY;
+			previousFreeSpaceZ = posZ;
+			hasPreviousFreeSpacePosition = true;
+		}
 		if(worldObj != null
 				&& worldObj.provider.dimensionId == Configuration.freeSpaceDimId
 				&& posY < FREE_SPACE_FLOOR) {
@@ -649,12 +681,20 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 						if(obj != null) {
 							int targetDimID = obj.getOrbitingPlanetId();
-
-							Vector3F<Float> pos = storage.getDestinationCoordinates(targetDimID, true);
+							StationTarget target =
+									StationTargetResolver.getInstance()
+											.resolve(targetDimID);
+							Vector3F<Float> pos =
+									target.getKind()
+											== StationTarget.Kind.DIMENSION
+									? storage.getDestinationCoordinates(
+											targetDimID, true)
+									: null;
 							if(pos != null) {
 								setInOrbit(true);
 								setInFlight(false);
-								this.travelToDimension(destinationDimId, pos.x, Configuration.orbit, pos.z);
+								this.travelToDimension(targetDimID, pos.x,
+										Configuration.orbit, pos.z);
 							}
 							else 
 								this.setDead();
@@ -759,6 +799,19 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			TileGuidanceComputer computer = storage.getGuidanceComputer();
 			if(computer != null && computer.getStackInSlot(0) != null &&
 					computer.getStackInSlot(0).getItem() instanceof ItemAsteroidChip) {
+				StationTarget currentBody =
+						StationTargetResolver.getInstance()
+								.resolveCurrentBody(worldObj,
+										(int)posX, (int)posZ);
+				if(currentBody.getKind() != StationTarget.Kind.DIMENSION
+						|| currentBody.getDimensionProperties() == null) {
+					// A mining mission must be attached to a persisted real
+					// dimension. Return the rocket without consuming its chip
+					// when launched from warp or direct black-hole orbit.
+					setInOrbit(true);
+					motionY = -Math.max(Math.abs(motionY), 0.1D);
+					return;
+				}
 				//make it 30 minutes with one drill
 				float drillingPower = stats.getDrillingPower();
 				
@@ -773,7 +826,8 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				}
 				
 				MissionOreMining miningMission = new MissionOreMining((long)(asteroidDrillingMult*Configuration.asteroidMiningTimeMult*(drillingPower == 0f ? 36000 : 360/stats.getDrillingPower())), this, connectedInfrastructure);
-				DimensionProperties properties = DimensionManager.getEffectiveDimId(worldObj, (int)posX, (int)posZ);
+				DimensionProperties properties =
+						currentBody.getDimensionProperties();
 
 				miningMission.setDimensionId(worldObj);
 				properties.addSatallite(miningMission, worldObj);
@@ -883,13 +937,26 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					&& riddenByEntity instanceof EntityPlayer
 					&& guidanceComputer != null
 					&& guidanceComputer.isManualSpaceFlightTask()) {
-				DimensionProperties sourceProperties = DimensionManager.getEffectiveDimId(
-						worldObj, (int)posX, (int)posZ);
-				SimUniverse.SimBody sourceBody = sourceProperties == null
+				StationTarget sourceTarget = StationTargetResolver.getInstance()
+						.resolveCurrentBody(worldObj, (int)posX, (int)posZ);
+				String sourceBodyId = null;
+				double hazardClearance = 0D;
+				if(sourceTarget.getKind()
+						== StationTarget.Kind.DIMENSION) {
+					sourceBodyId = AdvancedRocketryUniverse.planetId(
+							sourceTarget.getDimensionProperties().getId());
+				}
+				else if(sourceTarget.getKind()
+						== StationTarget.Kind.BLACK_HOLE_STAR) {
+					StellarBody sourceStar = sourceTarget.getStellarBody();
+					sourceBodyId = AdvancedRocketryUniverse.starId(
+							sourceStar.getId());
+					hazardClearance = sourceStar.getBlackHoleProperties()
+							.getCaptureRadius() + 4D;
+				}
+				SimUniverse.SimBody sourceBody = sourceBodyId == null
 						? null
-						: SimUniverse.getInstance().getBody(
-								AdvancedRocketryUniverse.planetId(
-										sourceProperties.getId()));
+						: SimUniverse.getInstance().getBody(sourceBodyId);
 				if(sourceBody != null) {
 					storage.setDestinationCoordinates(new Vector3F<Float>(
 							(float)posX, (float)posY, (float)posZ),
@@ -898,14 +965,13 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					setInFlight(true);
 					double clearance = Math.max(8D,
 							sourceBody.getConfig().getSize()*4D + 4D);
+					clearance = Math.max(clearance, hazardClearance);
 					travelToDimension(Configuration.freeSpaceDimId,
 							sourceBody.x, sourceBody.y + clearance, sourceBody.z);
 					return;
 				}
-				AdvancedRocketry.logger.warn("Cannot enter free space: simulated body for dimension "
-						+ (sourceProperties == null
-								? worldObj.provider.dimensionId
-								: sourceProperties.getId())
+				AdvancedRocketry.logger.warn("Cannot enter free space: simulated body for target "
+						+ sourceTarget.getRawId()
 						+ " is unavailable; using direct travel");
 			}
 
@@ -976,6 +1042,8 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 
 	private void unpackSatellites() {
 		List<TileSatelliteHatch> satelliteHatches = storage.getSatelliteHatches();
+		StationTarget currentBody = StationTargetResolver.getInstance()
+				.resolveCurrentBody(worldObj, (int)posX, (int)posZ);
 
 		for(TileSatelliteHatch tile : satelliteHatches) {
 			SatelliteBase satellite = tile.getSatellite();
@@ -986,13 +1054,13 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 					ISpaceObject object = SpaceObjectManager.getSpaceManager().getSpaceStation(stack.getItemDamage());
 					
 					//in case of no NBT data or the like
-					if(object == null) {
-						tile.setInventorySlotContents(0, null);
+					if(object == null)
 						continue;
-					}
 					
-					SpaceObjectManager.getSpaceManager().moveStationToBody(object, 
-									DimensionManager.getEffectiveDimId(this.worldObj.provider.dimensionId, (int)posX, (int)posZ).getId() );
+					if(!currentBody.isDestination())
+						continue;
+					SpaceObjectManager.getSpaceManager().moveStationToBody(
+							object, currentBody.getRawId());
 
 					//Vector3F<Integer> spawn = object.getSpawnLocation();
 
@@ -1002,12 +1070,18 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				}
 			}
 			else {
-				DimensionProperties properties = DimensionManager.getEffectiveDimId(worldObj, (int)this.posX, (int)this.posZ);
-				World world = net.minecraftforge.common.DimensionManager.getWorld(properties.getId());
+				DimensionProperties properties =
+						currentBody.getKind()
+								== StationTarget.Kind.DIMENSION
+						? currentBody.getDimensionProperties() : null;
+				World world = properties == null ? null
+						: net.minecraftforge.common.DimensionManager
+								.getWorld(properties.getId());
 
-				if(world != null)
+				if(world != null) {
 					properties.addSatallite(satellite, world);
-				tile.setInventorySlotContents(0, null);
+					tile.setInventorySlotContents(0, null);
+				}
 			}
 		}
 	}
@@ -1066,15 +1140,39 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		//If we're on a space station get the id of the planet, not the station
 		int thisDimId = this.worldObj.provider.dimensionId;
 		if(this.worldObj.provider.dimensionId == Configuration.spaceDimId) {
-			ISpaceObject object = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords((int)this.posX, (int)this.posZ);
+			ISpaceObject object = SpaceObjectManager.getSpaceManager()
+					.getSpaceStationFromBlockCoords(
+							(int)this.posX, (int)this.posZ);
 			if(object != null)
-				thisDimId = object.getProperties().getParentProperties().getId();
+				thisDimId = object.getOrbitingPlanetId();
 		}
 
 		//Check to see if it's possible to reach
-		if(finalDest != -1 && (!storage.hasWarpCore() || DimensionManager.getInstance().getDimensionProperties(finalDest).getStarId() != DimensionManager.getInstance().getDimensionProperties(thisDimId).getStarId()) && !DimensionManager.getInstance().areDimensionsInSamePlanetMoonSystem(finalDest, thisDimId)) {
-			setError(LibVulpes.proxy.getLocalizedString("error.rocket.notSameSystem"));
-			return;
+		if(finalDest != -1) {
+			StationTarget destinationTarget =
+					StationTargetResolver.getInstance().resolve(finalDest);
+			StationTarget sourceTarget =
+					StationTargetResolver.getInstance().resolve(thisDimId);
+			boolean samePlanetMoonSystem =
+					destinationTarget.getKind()
+							== StationTarget.Kind.DIMENSION
+					&& sourceTarget.getKind()
+							== StationTarget.Kind.DIMENSION
+					&& DimensionManager.getInstance()
+							.areDimensionsInSamePlanetMoonSystem(
+									finalDest, thisDimId);
+			StellarBody destinationStar =
+					destinationTarget.getStellarBody();
+			StellarBody sourceStar = sourceTarget.getStellarBody();
+			boolean sameStar = destinationStar != null
+					&& sourceStar != null
+					&& destinationStar.getId() == sourceStar.getId();
+			if(!samePlanetMoonSystem
+					&& (!storage.hasWarpCore() || !sameStar)) {
+				setError(LibVulpes.proxy.getLocalizedString(
+						"error.rocket.notSameSystem"));
+				return;
+			}
 		}
 
 		//TODO: Clean this logic a bit?
@@ -1260,6 +1358,68 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 		setInFlight(false);
 		travelToDimension(dimensionId, destination.x,
 				Configuration.orbit, destination.z);
+	}
+
+	public double getPreviousFreeSpaceX() {
+		return hasPreviousFreeSpacePosition ? previousFreeSpaceX : posX;
+	}
+
+	public double getPreviousFreeSpaceY() {
+		return hasPreviousFreeSpacePosition ? previousFreeSpaceY : posY;
+	}
+
+	public double getPreviousFreeSpaceZ() {
+		return hasPreviousFreeSpacePosition ? previousFreeSpaceZ : posZ;
+	}
+
+	/**
+	 * Completes the destructive part of a server-authoritative black-hole
+	 * capture. The guard makes duplicate encounter callbacks in the same tick
+	 * harmless.
+	 */
+	public void captureByBlackHole(String bodyId) {
+		if(worldObj == null || worldObj.isRemote || isDead
+				|| worldObj.provider.dimensionId != Configuration.freeSpaceDimId)
+			return;
+
+		long tick = worldObj.getTotalWorldTime();
+		String safeBodyId = bodyId == null ? "" : bodyId;
+		if(tick == lastBlackHoleCaptureTick
+				&& safeBodyId.equals(lastBlackHoleCaptureBody))
+			return;
+
+		BlackHoleCaptureEvent.Pre pre =
+				new BlackHoleCaptureEvent.Pre(this, safeBodyId);
+		if(MinecraftForge.EVENT_BUS.post(pre))
+			return;
+
+		lastBlackHoleCaptureTick = tick;
+		lastBlackHoleCaptureBody = safeBodyId;
+		motionX = motionY = motionZ = 0D;
+		setInFlight(false);
+		setInOrbit(false);
+		velocityChanged = true;
+
+		List<Entity> occupants = new ArrayList<Entity>();
+		if(riddenByEntity != null)
+			occupants.add(riddenByEntity);
+		for(WeakReference<Entity> reference : mountedEntities) {
+			Entity passenger = reference == null ? null : reference.get();
+			if(passenger != null && !occupants.contains(passenger))
+				occupants.add(passenger);
+		}
+
+		PlanetEventHandler.cancelDelayedTransitionsFor(this);
+		for(Entity occupant : occupants) {
+			PlanetEventHandler.cancelDelayedTransitionsFor(occupant);
+			if(occupant.ridingEntity == this)
+				occupant.mountEntity(null);
+			occupant.attackEntityFrom(BLACK_HOLE_DAMAGE, Float.MAX_VALUE);
+		}
+
+		setDead();
+		MinecraftForge.EVENT_BUS.post(
+				new BlackHoleCaptureEvent.Post(this, safeBodyId));
 	}
 
 	protected void readNetworkableNBT(NBTTagCompound nbt) {
@@ -1460,15 +1620,38 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 			player.openGui(LibVulpes.instance, GuiHandler.guiId.MODULARFULLSCREEN.ordinal(), player.worldObj, this.getEntityId(), -1,0);
 		}
 		else if(id == PacketType.SENDPLANETDATA.ordinal()) {
-			ItemStack stack = storage.getGuidanceComputer().getStackInSlot(0);
-			if(stack != null && stack.getItem() == AdvancedRocketryItems.itemPlanetIdChip) {
-				((ItemPlanetIdentificationChip)AdvancedRocketryItems.itemPlanetIdChip).setDimensionId(stack, nbt.getInteger("selection"));
+			if(storage == null || storage.getGuidanceComputer() == null)
+				return;
+			ItemStack stack = storage.getGuidanceComputer()
+					.getStackInSlot(0);
+			if(stack == null
+					|| stack.getItem()
+							!= AdvancedRocketryItems.itemPlanetIdChip)
+				return;
 
-				//Send data back to sync destination dims
-				if(!worldObj.isRemote) {
-					PacketHandler.sendToPlayersTrackingEntity(new PacketEntity(this, (byte)PacketType.SENDPLANETDATA.ordinal()), this);
-				}
+			int selection = nbt.getInteger("selection");
+			if(side == Side.SERVER) {
+				StationTarget target = StationTargetResolver.getInstance()
+						.resolve(selection);
+				if(player == null || player.worldObj != worldObj
+						|| !canInteractWithContainer(player)
+						|| target.getKind() != StationTarget.Kind.DIMENSION
+						|| target.getDimensionProperties() == null
+						|| !DimensionManager.getInstance()
+								.canTravelTo(selection))
+					return;
 			}
+
+			((ItemPlanetIdentificationChip)
+					AdvancedRocketryItems.itemPlanetIdChip)
+							.setDimensionId(stack, selection);
+
+			// Send the server-validated value back to tracking clients.
+			if(side == Side.SERVER)
+				PacketHandler.sendToPlayersTrackingEntity(
+						new PacketEntity(this,
+								(byte)PacketType.SENDPLANETDATA.ordinal()),
+						this);
 		}
 		else if(id == PacketType.DISCONNECTINFRASTRUCTURE.ordinal()) {
 			int pos[] = nbt.getIntArray("pos");
@@ -1631,13 +1814,37 @@ public class EntityRocket extends EntityRocketBase implements INetworkEntity, ID
 				modules.add(landingPadDisplayText);
 			}
 			else {
-				DimensionProperties properties = DimensionManager.getEffectiveDimId(worldObj, (int)this.posX, (int)this.posZ);
-				while(properties.getParentProperties() != null) properties = properties.getParentProperties();
+				StationTarget currentTarget =
+						StationTargetResolver.getInstance().resolveCurrentBody(
+								worldObj, (int)this.posX, (int)this.posZ);
+				if(currentTarget.getKind()
+						== StationTarget.Kind.BLACK_HOLE_STAR) {
+					if(!storage.hasWarpCore())
+						return modules;
+					container = new ModulePlanetSelector(
+							currentTarget.getStellarBody().getId(),
+							zmaster587.libVulpes.inventory.TextureResources.starryBG,
+							this, this, true);
+				}
+				else if(currentTarget.getKind()
+						== StationTarget.Kind.DIMENSION) {
+					DimensionProperties properties =
+							currentTarget.getDimensionProperties();
+					while(properties.getParentProperties() != null)
+						properties = properties.getParentProperties();
 
-				if(storage.hasWarpCore())
-					container = new ModulePlanetSelector(properties.getStarId(), zmaster587.libVulpes.inventory.TextureResources.starryBG, this, this, true);
-				else
-					container = new ModulePlanetSelector(properties.getId(), zmaster587.libVulpes.inventory.TextureResources.starryBG, this, false);
+					if(storage.hasWarpCore())
+						container = new ModulePlanetSelector(
+								properties.getStarId(),
+								zmaster587.libVulpes.inventory.TextureResources.starryBG,
+								this, this, true);
+					else
+						container = new ModulePlanetSelector(properties.getId(),
+								zmaster587.libVulpes.inventory.TextureResources.starryBG,
+								this, false);
+				}
+				if(container == null)
+					return modules;
 				container.setOffset(1000, 1000);
 				modules.add(container);
 			}

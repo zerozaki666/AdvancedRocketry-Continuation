@@ -21,6 +21,8 @@ import zmaster587.advancedRocketry.inventory.modules.ModuleSatellite;
 import zmaster587.advancedRocketry.item.ItemData;
 import zmaster587.advancedRocketry.item.ItemSatelliteIdentificationChip;
 import zmaster587.advancedRocketry.satellite.SatelliteData;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.util.IDataInventory;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.inventory.modules.IButtonInventory;
@@ -111,7 +113,7 @@ public class TileEntitySatelliteControlCenter extends TileInventoriedRFConsumer 
 			SatelliteBase satellite = moduleSatellite.getSatellite();
 
 			
-			if(satellite != null && DimensionManager.getInstance().areDimensionsInSamePlanetMoonSystem(satellite.getDimensionId(),DimensionManager.getEffectiveDimId(this.worldObj.provider.dimensionId, xCoord, zCoord).getId())) {
+			if(satellite != null && isSatelliteInRange(satellite)) {
 				satellite.performAction(player, worldObj, xCoord, yCoord, zCoord);
 			}
 		}
@@ -135,7 +137,7 @@ public class TileEntitySatelliteControlCenter extends TileInventoriedRFConsumer 
 				if(getEnergyStored() < getPowerPerOperation()) 
 					moduleText.setText(LibVulpes.proxy.getLocalizedString("msg.notenoughpower"));
 
-				else if(!DimensionManager.getInstance().areDimensionsInSamePlanetMoonSystem(satellite.getDimensionId(), DimensionManager.getEffectiveDimId(worldObj, xCoord, zCoord).getId())) {
+				else if(!isSatelliteInRange(satellite)) {
 					moduleText.setText(satellite.getName() + "\n\n" + LibVulpes.proxy.getLocalizedString("msg.satctrlcenter.toofar") );
 				}
 
@@ -145,6 +147,22 @@ public class TileEntitySatelliteControlCenter extends TileInventoriedRFConsumer 
 			else
 				moduleText.setText(LibVulpes.proxy.getLocalizedString("msg.satctrlcenter.nolink"));
 		}
+	}
+
+	private boolean isSatelliteInRange(SatelliteBase satellite) {
+		if(satellite == null || worldObj == null)
+			return false;
+		StationTarget current = StationTargetResolver.getInstance()
+				.resolveCurrentBody(worldObj, xCoord, zCoord);
+		if(DimensionManager.getInstance().getDimensionPropertiesExact(
+				satellite.getDimensionId()) == null)
+			return false;
+		return current.getKind() == StationTarget.Kind.DIMENSION
+				&& current.getDimensionProperties() != null
+				&& DimensionManager.getInstance()
+						.areDimensionsInSamePlanetMoonSystem(
+								satellite.getDimensionId(),
+								current.getDimensionProperties().getId());
 	}
 
 
@@ -197,8 +215,14 @@ public class TileEntitySatelliteControlCenter extends TileInventoriedRFConsumer 
 				SatelliteBase satellite = idchip.getSatellite(stack);
 
 				//Somebody might want to erase the chip of an already existing satellite
-				if(satellite != null)
-					DimensionManager.getInstance().getDimensionProperties(satellite.getDimensionId()).removeSatellite(satellite.getId());
+				if(satellite != null) {
+					zmaster587.advancedRocketry.dimension.DimensionProperties
+							properties = DimensionManager.getInstance()
+									.getDimensionPropertiesExact(
+											satellite.getDimensionId());
+					if(properties != null)
+						properties.removeSatellite(satellite.getId());
+				}
 
 				idchip.erase(stack);
 				setInventorySlotContents(0, stack);
@@ -250,7 +274,8 @@ public class TileEntitySatelliteControlCenter extends TileInventoriedRFConsumer 
 		if(type == data.getDataType() || data.getDataType() == DataType.UNDEFINED) {
 			SatelliteBase satellite = getSatelliteFromSlot(0);
 			
-			if(satellite != null && satellite instanceof SatelliteData && DimensionManager.getInstance().areDimensionsInSamePlanetMoonSystem(satellite.getDimensionId(), this.worldObj.provider.dimensionId)) {
+			if(satellite instanceof SatelliteData
+					&& isSatelliteInRange(satellite)) {
 				satellite.performAction(null, worldObj, this.xCoord, this.yCoord, this .zCoord);
 			}
 			return data.removeData(maxAmount, commit);

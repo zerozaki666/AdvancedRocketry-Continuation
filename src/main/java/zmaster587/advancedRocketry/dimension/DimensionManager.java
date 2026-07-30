@@ -28,6 +28,7 @@ import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.AdvancedRocketryAPI;
 import zmaster587.advancedRocketry.api.AdvancedRocketryBlocks;
 import zmaster587.advancedRocketry.api.Configuration;
+import zmaster587.advancedRocketry.api.Constants;
 import zmaster587.advancedRocketry.api.dimension.IDimensionProperties;
 import zmaster587.advancedRocketry.api.dimension.solar.IGalaxy;
 import zmaster587.advancedRocketry.api.dimension.solar.StellarBody;
@@ -38,6 +39,8 @@ import zmaster587.advancedRocketry.dimension.DimensionProperties.AtmosphereTypes
 import zmaster587.advancedRocketry.dimension.DimensionProperties.Temps;
 import zmaster587.advancedRocketry.network.PacketDimInfo;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.util.AstronomicalBodyHelper;
 import zmaster587.advancedRocketry.util.XMLPlanetLoader;
 import zmaster587.libVulpes.network.PacketHandler;
@@ -212,15 +215,18 @@ public class DimensionManager implements IGalaxy {
 	 * @return next free id
 	 */
 	public int getNextFreeDim(int offset) {
-		for(int i = offset; i < 10000; i++) {
+		for(int i = offset; ; i++) {
 			if(!net.minecraftforge.common.DimensionManager.isDimensionRegistered(i) && !dimensionList.containsKey(i))
 				return i;
+			if(i == Integer.MAX_VALUE)
+				break;
 		}
 		return -1;
 	}
 
 	public int getNextFreeStarId() {
-		for(int i = 0; i < Integer.MAX_VALUE; i++) {
+		for(int i = 0; i <= Integer.MAX_VALUE
+				- Constants.STAR_ID_OFFSET; i++) {
 			if(!starList.containsKey(i))
 				return i;
 		}
@@ -384,7 +390,16 @@ public class DimensionManager implements IGalaxy {
 	 * @return true if it can be traveled to, in general if it has a surface
 	 */
 	public boolean canTravelTo(int dimId){
-		return net.minecraftforge.common.DimensionManager.isDimensionRegistered(dimId) && dimId != -1 && !getDimensionProperties(dimId).isGasGiant();
+		if(dimId == Configuration.spaceDimId
+				|| dimId == Configuration.freeSpaceDimId)
+			return net.minecraftforge.common.DimensionManager
+					.isDimensionRegistered(dimId);
+
+		DimensionProperties properties = getDimensionPropertiesExact(dimId);
+		return properties != null && dimId != -1
+				&& net.minecraftforge.common.DimensionManager
+						.isDimensionRegistered(dimId)
+				&& !properties.isGasGiant();
 	}
 
 	/**
@@ -435,6 +450,7 @@ public class DimensionManager implements IGalaxy {
 		}
 		dimensionList.clear();
 		starList.clear();
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 
 	/**
@@ -504,6 +520,19 @@ public class DimensionManager implements IGalaxy {
 	}
 
 	/**
+	 * Looks up a real dimension without applying the legacy overworld fallback.
+	 * Station target validation must use this method.
+	 */
+	public DimensionProperties getDimensionPropertiesExact(int dimId) {
+		DimensionProperties properties = dimensionList.get(dimId);
+		if(properties == null && dimId == 0
+				&& overworldProperties != null
+				&& overworldProperties.getId() == 0)
+			return overworldProperties;
+		return properties;
+	}
+
+	/**
 	 * @param id star id for which to get the object
 	 * @return the {@link StellarBody} object
 	 */
@@ -532,7 +561,16 @@ public class DimensionManager implements IGalaxy {
 	 * @param star star to add
 	 */
 	public void addStar(StellarBody star) {
+		if(star == null || star.getId() < 0
+				|| star.getId() > Integer.MAX_VALUE
+						- Constants.STAR_ID_OFFSET) {
+			AdvancedRocketry.logger.warn(
+					"Refusing star whose ID cannot be represented as a "
+					+ "station target");
+			return;
+		}
 		starList.put(star.getId(), star);
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 
 	/**
@@ -542,6 +580,7 @@ public class DimensionManager implements IGalaxy {
 	public void removeStar(int id) {
 		//TODO: actually remove subPlanets et
 		starList.remove(id);
+		StationTargetResolver.getInstance().invalidateCache();
 	}
 
 	/**
@@ -705,7 +744,7 @@ public class DimensionManager implements IGalaxy {
 			NBTTagCompound solarNBT = solarSystem.getCompoundTag((String)key);
 			StellarBody star = new StellarBody();
 			star.readFromNBT(solarNBT);
-			starList.put(star.getId(), star);
+			addStar(star);
 		}
 
 		nbt.setTag("starSystems", solarSystem);
@@ -717,11 +756,20 @@ public class DimensionManager implements IGalaxy {
 
 		for(Object key : dimListNbt.func_150296_c()) {
 			String keyString = (String)key;
-
-			DimensionProperties propeties = DimensionProperties.createFromNBT(Integer.parseInt(keyString) ,dimListNbt.getCompoundTag(keyString));
+			int keyInt;
+			try {
+				keyInt = Integer.parseInt(keyString);
+			}
+			catch(NumberFormatException exception) {
+				AdvancedRocketry.logger.warn(
+						"Ignoring invalid saved dimension key '" + keyString
+						+ "'");
+				continue;
+			}
+			DimensionProperties propeties = DimensionProperties.createFromNBT(
+					keyInt, dimListNbt.getCompoundTag(keyString));
 
 			if(propeties != null) {
-				int keyInt = Integer.parseInt(keyString);
 				if(!net.minecraftforge.common.DimensionManager.isDimensionRegistered(keyInt) && propeties.isNativeDimension && !propeties.isGasGiant()) {
 					net.minecraftforge.common.DimensionManager.registerProviderType(keyInt, DimensionManager.planetWorldProvider, false);
 					net.minecraftforge.common.DimensionManager.registerDimension(keyInt, keyInt);
@@ -745,8 +793,18 @@ public class DimensionManager implements IGalaxy {
 		//Try to fix invalid objects
 		for(ISpaceObject i : SpaceObjectManager.getSpaceManager().getSpaceObjects())
 		{
-			if(!isDimensionCreated(i.getOrbitingPlanetId()) && i.getOrbitingPlanetId() != 0 && i.getOrbitingPlanetId() != SpaceObjectManager.WARPDIMID)
-			{
+			StationTarget target = StationTargetResolver.getInstance()
+					.resolve(i.getOrbitingPlanetId());
+			if(target.getKind() == StationTarget.Kind.INVALID
+					&& StationTargetResolver.getInstance()
+							.isStellarSelectorId(i.getOrbitingPlanetId())) {
+				AdvancedRocketry.logger.warn("Space station " + i.getId()
+						+ " references missing or non-black-hole stellar target "
+						+ i.getOrbitingPlanetId()
+						+ "; preserving the invalid target for diagnosis");
+			}
+			else if(target.getKind() == StationTarget.Kind.INVALID
+					&& i.getOrbitingPlanetId() != 0) {
 				AdvancedRocketry.logger.warn("Dimension ID " + i.getOrbitingPlanetId() + " is not registered and a space station is orbiting it, moving to dimid 0");
 				i.setOrbitingBody(0);
 			}
@@ -791,8 +849,11 @@ public class DimensionManager implements IGalaxy {
 
 		if(dimId == Configuration.spaceDimId) {
 			ISpaceObject obj = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(x, z);
-			if(obj != null)
-				return (DimensionProperties) obj.getProperties().getParentProperties();
+			if(obj != null) {
+				DimensionProperties parent = (DimensionProperties)obj
+						.getProperties().getParentProperties();
+				return parent == null ? defaultSpaceDimensionProperties : parent;
+			}
 			else 
 				return defaultSpaceDimensionProperties;
 		}
@@ -804,8 +865,11 @@ public class DimensionManager implements IGalaxy {
 
 		if(dimId == Configuration.spaceDimId) {
 			ISpaceObject obj = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(x, z);
-			if(obj != null)
-				return (DimensionProperties) obj.getProperties().getParentProperties();
+			if(obj != null) {
+				DimensionProperties parent = (DimensionProperties)obj
+						.getProperties().getParentProperties();
+				return parent == null ? defaultSpaceDimensionProperties : parent;
+			}
 			else 
 				return defaultSpaceDimensionProperties;
 		}

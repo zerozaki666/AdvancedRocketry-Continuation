@@ -24,6 +24,8 @@ import zmaster587.advancedRocketry.entity.EntityUIPlanet;
 import zmaster587.advancedRocketry.entity.EntityUIStar;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationTarget;
+import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.inventory.modules.IButtonInventory;
 import zmaster587.libVulpes.inventory.modules.IModularInventory;
@@ -179,11 +181,14 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 	public void selectSystem(int id) {
 
-		if(id >= EntityUIStar.starIDoffset) {
+		StationTargetResolver targetResolver =
+				StationTargetResolver.getInstance();
+		if(targetResolver.isStellarSelectorId(id)) {
 			if(stellarMode) {
 				if(selectedId != id) {
 					for(EntityUIStar entity : starEntities) {
-						if(entity.getPlanetID() + EntityUIStar.starIDoffset == id) {
+						if(targetResolver.getSelectorId(entity.getPlanetID())
+								== id) {
 							entity.setSelected(true);
 							selectedPlanet = entity;
 						}
@@ -194,17 +199,22 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 				}
 				else {
 					stellarMode = false;
-					currentStarBody = DimensionManager.getInstance().getStar(id - EntityUIStar.starIDoffset);
+					currentStarBody = targetResolver.getSelectorStar(id);
 					rebuildSystem();
 					selectedId = -1;
 				}
 			}
 
 		}
-		else {
-			ISpaceObject station = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
-			if(station != null) {
-				station.setDestOrbitingBody(id);
+			else {
+				ISpaceObject station = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
+				StationTarget target = targetResolver.resolve(id);
+				if(station != null
+						&& station.getOrbitingPlanetId()
+								!= SpaceObjectManager.WARPDIMID
+						&& target.getKind()
+								== StationTarget.Kind.DIMENSION) {
+					station.setDestOrbitingBody(id);
 
 				if(selectedPlanet != null && selectedPlanet.getPlanetID() == id) {
 					centeredEntity = selectedPlanet;

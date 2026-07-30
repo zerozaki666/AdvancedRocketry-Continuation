@@ -496,15 +496,21 @@ public class SpaceObject implements ISpaceObject, IPlanetDefiner {
 		if(id == this.getOrbitingPlanetId())
 			return;
 
-		properties.setParentPlanet(zmaster587.advancedRocketry.dimension.DimensionManager.getInstance().getDimensionProperties(id), false);
+		properties.setParentPlanetIdForStation(id);
 		if(id != SpaceObjectManager.WARPDIMID)
 			destinationDimId = id;
 	}
 
 	@Override
 	public void setDestOrbitingBody(int id) {
+		// Once a transition starts, destinationDimId is the committed target
+		// consumed by SpaceObjectManager when the ETA elapses. GUI/entity
+		// interactions must not be able to redirect an in-flight station.
+		if(FMLCommonHandler.instance().getEffectiveSide().isServer()
+				&& getOrbitingPlanetId() == SpaceObjectManager.WARPDIMID)
+			return;
 		destinationDimId = id;
-		if(FMLCommonHandler.instance().getSide().isServer()) {
+		if(FMLCommonHandler.instance().getEffectiveSide().isServer()) {
 			PacketHandler.sendToAll(new PacketStationUpdate(this, PacketStationUpdate.Type.DEST_ORBIT_UPDATE));
 		}
 	}

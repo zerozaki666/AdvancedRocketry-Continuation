@@ -13,6 +13,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.ActiveRenderInfo;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.EntityPlayer.EnumStatus;
@@ -89,6 +90,24 @@ public class PlanetEventHandler {
 
 	public static void addDelayedTransition(long tick, TransitionEntity entity) {
 		transitionMap.put(tick, entity);
+	}
+
+	/**
+	 * Removes pending cross-dimension remounts which involve the supplied
+	 * entity either as the traveller or the destination mount.
+	 */
+	public static void cancelDelayedTransitionsFor(Entity entity) {
+		if(entity == null || transitionMap.isEmpty())
+			return;
+
+		Iterator<Entry<Long, TransitionEntity>> iterator =
+				transitionMap.entrySet().iterator();
+		while(iterator.hasNext()) {
+			TransitionEntity transition = iterator.next().getValue();
+			if(transition == null || transition.entity == entity
+					|| transition.entity2 == entity)
+				iterator.remove();
+		}
 	}
 
 	@SubscribeEvent

@@ -24,9 +24,9 @@ public class CompatibilityMgr {
 		powerSuits = Loader.isModLoaded("powersuits");
 		openComputersLoaded = Loader.isModLoaded("OpenComputers");
 		if(openComputersLoaded)
-			AdvancedRocketry.logger.info("OpenComputers 1.12.44-GTNH detected; station controller integration enabled");
+			AdvancedRocketry.logger.info("OpenComputers 1.12.44-GTNH detected; Advanced Rocketry component integration enabled");
 		else
-			AdvancedRocketry.logger.debug("OpenComputers not detected; station controller integration disabled");
+			AdvancedRocketry.logger.debug("OpenComputers not detected; Advanced Rocketry component integration disabled");
 	}
 	
 	public static void initCompatRecipies() {

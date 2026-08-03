@@ -1,58 +1,61 @@
 package zmaster587.advancedRocketry.tile.multiblock;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import cpw.mods.fml.common.Optional;
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.SimpleComponent;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.util.AxisAlignedBB;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraft.world.biome.BiomeGenBase;
-import net.minecraftforge.common.BiomeManager.BiomeEntry;
-import zmaster587.advancedRocketry.api.AdvancedRocketryBlocks;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
-import zmaster587.advancedRocketry.dimension.DimensionProperties;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess.Result;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
-import zmaster587.advancedRocketry.stations.StationTarget;
-import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.api.LibVulpesBlocks;
-import zmaster587.libVulpes.inventory.TextureResources;
 import zmaster587.libVulpes.inventory.modules.ModuleBase;
 import zmaster587.libVulpes.inventory.modules.ModuleContainerPan;
 import zmaster587.libVulpes.inventory.modules.ModuleImage;
 import zmaster587.libVulpes.inventory.modules.ModuleText;
 import zmaster587.libVulpes.tile.multiblock.TileMultiPowerConsumer;
-import zmaster587.libVulpes.util.IconResource;
 
-public class TileBiomeScanner extends TileMultiPowerConsumer {
+@Optional.Interface(iface = "li.cil.oc.api.network.SimpleComponent", modid = "OpenComputers")
+public class TileBiomeScanner extends TileMultiPowerConsumer implements SimpleComponent {
 
-	private static final Object[][][] structure = new Object[][][]{
+	private static final Object[][][] structure = new Object[][][] {
+			{	{null, null, null, null, null},
+				{null, null, null, null, null},
+				{null, null, 'c', null, null},
+				{null, null, null, null, null},
+				{null, null, null, null, null}},
 
-		{	{null, null, null, null, null}, 
-			{null, null, null, null, null},
-			{null, null, 'c', null, null},
-			{null, null, null, null, null},
-			{null, null, null, null, null}},
-
-			{	{null, null, null, null, null}, 
+			{	{null, null, null, null, null},
 				{null, null, null, null, null},
 				{null, null, LibVulpesBlocks.motors, null, null},
 				{null, null, null, null, null},
 				{null, null, null, null, null}},
 
-				{	{null,Blocks.iron_block,Blocks.iron_block,Blocks.iron_block,null}, 
-					{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
-					{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
-					{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
-					{null,Blocks.iron_block,Blocks.iron_block,Blocks.iron_block,null}},
+			{	{null, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, null},
+				{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
+				{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
+				{Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block},
+				{null, Blocks.iron_block, Blocks.iron_block, Blocks.iron_block, null}},
 
-					{	{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air}, 
-						{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air},
-						{Blocks.air, Blocks.air, Blocks.redstone_block, Blocks.air, Blocks.air},
-						{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air},
-						{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air}}};
-
+			{	{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air},
+				{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air},
+				{Blocks.air, Blocks.air, Blocks.redstone_block, Blocks.air, Blocks.air},
+				{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air},
+				{Blocks.air, Blocks.air, Blocks.air, Blocks.air, Blocks.air}}
+	};
 
 	@Override
 	public Object[][][] getStructure() {
@@ -60,64 +63,112 @@ public class TileBiomeScanner extends TileMultiPowerConsumer {
 	}
 
 	@Override
-	public List<ModuleBase> getModules(int ID, EntityPlayer player) {
-		List<ModuleBase> list = new LinkedList<ModuleBase>();//super.getModules(ID, player);
+	public List<ModuleBase> getModules(int id, EntityPlayer player) {
+		List<ModuleBase> list = new LinkedList<ModuleBase>();
+		if(worldObj.isRemote)
+			list.add(new ModuleImage(24, 14,
+					zmaster587.advancedRocketry.inventory.TextureResources.earthCandyIcon));
 
-		boolean suitable = true;
-		for(int y = this.yCoord - 4; y > 0; y--) {
-			if(!worldObj.isAirBlock(this.xCoord, y, this.zCoord)) {
-				suitable = false;
-				break;
-			}
+		ISpaceObject station = SpaceObjectManager.getSpaceManager()
+				.getSpaceStationFromBlockCoords(xCoord, zCoord);
+		BiomeScanService.Result scan = BiomeScanService.scan(this, station);
+		if(scan.isSuccess()) {
+			List<ModuleBase> biomeModules = new LinkedList<ModuleBase>();
+			int index = 0;
+			for(BiomeGenBase biome : scan.getBiomes())
+				biomeModules.add(new ModuleText(32, 16 + 12*(index++),
+						biome.biomeName, 0x202020));
+			list.add(new ModuleContainerPan(0, 16, biomeModules,
+					new LinkedList<ModuleBase>(), null, 148, 128, 0, -64,
+					0, 1000));
 		}
-
-		if(worldObj.isRemote) {
-			list.add(new ModuleImage(24, 14, zmaster587.advancedRocketry.inventory.TextureResources.earthCandyIcon));
-		}
-
-		ISpaceObject spaceObject = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
-		StationTarget target = spaceObject == null ? null
-				: StationTargetResolver.getInstance().resolve(
-						spaceObject.getOrbitingPlanetId());
-		if(suitable && target != null
-				&& target.getKind() == StationTarget.Kind.DIMENSION) {
-			DimensionProperties properties = target.getDimensionProperties();
-			List<ModuleBase> list2 = new LinkedList<ModuleBase>();
-			if(properties.isGasGiant()) {
-				list2.add(new ModuleText(32, 16, LibVulpes.proxy.getLocalizedString("msg.biomescanner.gas"), 0x202020));
-			} else {
-				
-
-
-				int i = 0;
-				if(properties.getId() == 0) {
-					for(BiomeGenBase biome : BiomeGenBase.getBiomeGenArray()) {
-						if(biome != null)
-							list2.add(new ModuleText(32, 16 + 12*(i++), biome.biomeName, 0x202020));
-					}
-				}
-				else
-					for(BiomeEntry biome : properties.getBiomes()) {
-						list2.add(new ModuleText(32, 16 + 12*(i++), biome.biome.biomeName, 0x202020));
-					}
-			}
-			//Relying on a bug, is this safe?
-			ModuleContainerPan pan = new ModuleContainerPan(0, 16, list2, new LinkedList<ModuleBase>(), null, 148, 128, 0, -64, 0, 1000);
-			list.add(pan);
-		}
+		else if("no_surface".equals(scan.getErrorCode()))
+			list.add(new ModuleText(32, 16,
+					LibVulpes.proxy.getLocalizedString("msg.biomescanner.gas"),
+					0x202020));
 		else
-			list.add(new ModuleText(32, 16, EnumChatFormatting.OBFUSCATED + "Foxes, that is all", 0x202020));
-
+			list.add(new ModuleText(32, 16,
+					EnumChatFormatting.OBFUSCATED + "Foxes, that is all",
+					0x202020));
 		return list;
+	}
+
+	public boolean hasClearScanPath() {
+		if(worldObj == null)
+			return false;
+		for(int y = yCoord - 4; y > 0; y--)
+			if(!worldObj.isAirBlock(xCoord, y, zCoord))
+				return false;
+		return true;
 	}
 
 	@Override
 	public AxisAlignedBB getRenderBoundingBox() {
-		return AxisAlignedBB.getBoundingBox(xCoord -5,yCoord -3, zCoord -5, xCoord +5, yCoord + 3, zCoord + 5);
+		return AxisAlignedBB.getBoundingBox(xCoord - 5, yCoord - 3,
+				zCoord - 5, xCoord + 5, yCoord + 3, zCoord + 5);
 	}
 
 	@Override
 	public String getMachineName() {
 		return "tile.biomeScanner.name";
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public String getComponentName() {
+		return "biome_scanner";
+	}
+
+	@Callback(doc = "function():table -- Scans biome id/name entries for the current orbit target.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] scan(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		BiomeScanService.Result scan = BiomeScanService.scan(this,
+				access.getSpaceObject());
+		if(!scan.isSuccess())
+			return OpenComputersComponentAccess.getterError(
+					scan.getErrorCode(), scan.getErrorMessage());
+		return new Object[] { BiomeScanService.toComputerTable(
+				scan.getBiomes()) };
+	}
+
+	@Callback(doc = "function():table -- Scans biome display names for the current orbit target.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] scanNames(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		BiomeScanService.Result scan = BiomeScanService.scan(this,
+				access.getSpaceObject());
+		if(!scan.isSuccess())
+			return OpenComputersComponentAccess.getterError(
+					scan.getErrorCode(), scan.getErrorMessage());
+		List<String> names = new ArrayList<String>();
+		for(BiomeGenBase biome : scan.getBiomes())
+			names.add(biome.biomeName == null ? "" : biome.biomeName);
+		return new Object[] { names };
+	}
+
+	@Callback(doc = "function():table -- Returns multiblock, observation path, station, and scan state.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		BiomeScanService.Result scan = BiomeScanService.scan(this,
+				access.getSpaceObject());
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("stationId", access.getSpaceObject().getId());
+		status.put("currentTargetId",
+				access.getSpaceObject().getOrbitingPlanetId());
+		status.put("multiblockComplete", isComplete());
+		status.put("obstructed", !hasClearScanPath());
+		status.put("scannable", scan.isSuccess());
+		status.put("state", scan.isSuccess() ? "ready"
+				: scan.getErrorCode());
+		status.put("biomeCount", scan.getBiomes().size());
+		return new Object[] { status };
 	}
 }

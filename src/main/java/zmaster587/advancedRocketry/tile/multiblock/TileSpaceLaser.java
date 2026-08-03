@@ -2,8 +2,11 @@ package zmaster587.advancedRocketry.tile.multiblock;
 
 import io.netty.buffer.ByteBuf;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
@@ -29,6 +32,8 @@ import zmaster587.advancedRocketry.AdvancedRocketry;
 import zmaster587.advancedRocketry.api.AdvancedRocketryItems;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.integration.CompatibilityMgr;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess.Result;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.advancedRocketry.satellite.SatelliteLaser;
 import zmaster587.advancedRocketry.satellite.SatelliteLaserNoDrill;
@@ -54,10 +59,16 @@ import zmaster587.libVulpes.network.PacketMachine;
 import zmaster587.libVulpes.tile.multiblock.TileMultiPowerConsumer;
 import zmaster587.libVulpes.util.INetworkMachine;
 import zmaster587.libVulpes.util.MultiInventory;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
 import cpw.mods.fml.relauncher.SideOnly;
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.SimpleComponent;
 
-public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInventory, INetworkMachine, IModularInventory, IGuiCallback, IButtonInventory {
+@Optional.Interface(iface = "li.cil.oc.api.network.SimpleComponent", modid = "OpenComputers")
+public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInventory, INetworkMachine, IModularInventory, IGuiCallback, IButtonInventory, SimpleComponent {
 
 	private static final int INVSIZE = 9;
 	ItemStack glassPanel;
@@ -197,23 +208,17 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
 		super.useNetworkData(player, side, id, nbt);
-		if(id == 10) {
-			this.laserX = nbt.getInteger("laserX");
-			finished = false;
-
-			if(mode == MODE.SPIRAL)
-				resetSpiral();
-		}
-		else if(id == 11) {
-			this.laserZ = nbt.getInteger("laserZ");
-			finished = false;
-			if(mode == MODE.SPIRAL)
-				resetSpiral();
-		}
+		if(id == 10)
+			setLaserCoordinates(nbt.getInteger("laserX"), laserZ);
+		else if(id == 11)
+			setLaserCoordinates(laserX, nbt.getInteger("laserZ"));
 		else if(id == 12)
 			this.isRunning = nbt.getBoolean("isRunning");
-		else if(id == 13 && !isRunning())
-			this.mode = MODE.values()[nbt.getInteger("mode")];
+		else if(id == 13 && !isRunning()) {
+			int ordinal = nbt.getInteger("mode");
+			if(ordinal >= 0 && ordinal < MODE.values().length)
+				setMode(MODE.values()[ordinal]);
+		}
 		else if(id == 14)
 			this.attempUnjam();
 
@@ -236,32 +241,52 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 	public MODE getMode() {return mode;}
 
 	public void incrementMode() {
-		if(mode == MODE.SPIRAL)
-			resetSpiral();
-
 		int num = mode.ordinal();
 		num++;
 
 		if(num >= MODE.values().length)
 			num = 0;
 
-		mode = MODE.values()[num];
+		setMode(MODE.values()[num]);
 	}
 
 	public void decrementMode() {
-		if(mode == MODE.SPIRAL)
-			resetSpiral();
-
 		int num = mode.ordinal();
 		num--;
 
 		if(num < 0)
 			num = MODE.values().length - 1;
 
-		mode = MODE.values()[num];
+		setMode(MODE.values()[num]);
 	}
 
-	public void setMode(MODE m) {mode = m;};
+	public void setMode(MODE newMode) {
+		if(newMode == null)
+			return;
+		if(mode != newMode) {
+			if(mode == MODE.SPIRAL || newMode == MODE.SPIRAL)
+				resetSpiral();
+			mode = newMode;
+			onAutomationTargetChanged();
+		}
+	}
+
+	private void setLaserCoordinates(int x, int z) {
+		if(laserX != x || laserZ != z || finished) {
+			laserX = x;
+			laserZ = z;
+			finished = false;
+			if(mode == MODE.SPIRAL)
+				resetSpiral();
+			onAutomationTargetChanged();
+		}
+	}
+
+	private void onAutomationTargetChanged() {
+		markDirty();
+		if(worldObj != null && !worldObj.isRemote)
+			worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+	}
 
 	@Override
 	public boolean canUpdate() {return true;}
@@ -383,12 +408,24 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 	protected void writeNetworkData(NBTTagCompound nbt) {
 		super.writeNetworkData(nbt);
 		nbt.setBoolean("IsRunning", isRunning);
+		nbt.setBoolean("Finished", finished);
+		nbt.setInteger("laserX", laserX);
+		nbt.setInteger("laserZ", laserZ);
+		nbt.setByte("mode", (byte)mode.ordinal());
+		nbt.setBoolean("Jammed", laserSat.getJammed());
 	}
 	
 	@Override
 	protected void readNetworkData(NBTTagCompound nbt) {
 		super.readNetworkData(nbt);
 		isRunning = nbt.getBoolean("IsRunning");
+		finished = nbt.getBoolean("Finished");
+		laserX = nbt.getInteger("laserX");
+		laserZ = nbt.getInteger("laserZ");
+		int modeOrdinal = nbt.getByte("mode");
+		mode = modeOrdinal >= 0 && modeOrdinal < MODE.values().length
+				? MODE.values()[modeOrdinal] : MODE.SINGLE;
+		laserSat.setJammed(nbt.getBoolean("Jammed"));
 	}
 
 	@Override
@@ -434,14 +471,20 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 
 		laserX = nbt.getInteger("laserX");
 		laserZ = nbt.getInteger("laserZ");
-		mode = MODE.values()[nbt.getByte("mode")];
+		int modeOrdinal = nbt.getByte("mode");
+		mode = modeOrdinal >= 0 && modeOrdinal < MODE.values().length
+				? MODE.values()[modeOrdinal] : MODE.SINGLE;
 
 		if(mode == MODE.SPIRAL && nbt.hasKey("prevDir")){
 			xCenter = nbt.getInteger("CenterX");
 			yCenter = nbt.getInteger("CenterY");
 			radius = nbt.getInteger("radius");
 			numSteps = nbt.getInteger("numSteps");
-			prevDir = ForgeDirection.values()[nbt.getInteger("prevDir")];
+			int direction = nbt.getInteger("prevDir");
+			prevDir = direction >= 0
+					&& direction < ForgeDirection.values().length
+							? ForgeDirection.values()[direction]
+							: ForgeDirection.UNKNOWN;
 		}
 	}
 
@@ -727,12 +770,14 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 
 		if(module == locationX) {
 			if(!((ModuleTextBox)module).getText().isEmpty() && !((ModuleTextBox)module).getText().contentEquals("-"))
-				laserX = Integer.parseInt(((ModuleTextBox)module).getText());
+				setLaserCoordinates(Integer.parseInt(
+						((ModuleTextBox)module).getText()), laserZ);
 			PacketHandler.sendToServer(new PacketMachine(this,(byte) 10));
 		}
 		else if(module == locationZ) {
 			if(!((ModuleTextBox)module).getText().isEmpty() && !((ModuleTextBox)module).getText().contentEquals("-"))
-				laserZ = Integer.parseInt(((ModuleTextBox)module).getText());
+				setLaserCoordinates(laserX, Integer.parseInt(
+						((ModuleTextBox)module).getText()));
 			PacketHandler.sendToServer(new PacketMachine(this,(byte) 11));
 		}
 
@@ -799,5 +844,181 @@ public class TileSpaceLaser extends TileMultiPowerConsumer implements ISidedInve
 
 		if(!this.isRunning())
 			PacketHandler.sendToServer(new PacketMachine(this, (byte)13));
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public String getComponentName() {
+		return "mining_laser";
+	}
+
+	private String getModeName() {
+		return mode.name().toLowerCase(Locale.ENGLISH);
+	}
+
+	private MODE parseMode(String value) {
+		if(value == null)
+			return null;
+		try {
+			return MODE.valueOf(value.trim().toUpperCase(Locale.ENGLISH));
+		}
+		catch(IllegalArgumentException ignored) {
+			return null;
+		}
+	}
+
+	@Callback(doc = "function():number, number -- Returns the current X/Z mining target.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCoordinates(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { laserX, laserZ };
+	}
+
+	@Callback(doc = "function(x:number, z:number):boolean, number|string, number|string -- Atomically sets integer X/Z coordinates.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setCoordinates(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		double xValue = args.checkDouble(0);
+		double zValue = args.checkDouble(1);
+		if(Double.isNaN(xValue) || Double.isInfinite(xValue)
+				|| Double.isNaN(zValue) || Double.isInfinite(zValue))
+			return OpenComputersComponentAccess.mutatorError("not_finite",
+					"Mining coordinates must be finite integers.");
+		if(xValue != Math.rint(xValue) || zValue != Math.rint(zValue))
+			return OpenComputersComponentAccess.mutatorError("invalid_value",
+					"Mining coordinates must be whole numbers.");
+		if(xValue < -30000000D || xValue > 30000000D
+				|| zValue < -30000000D || zValue > 30000000D)
+			return OpenComputersComponentAccess.mutatorError("out_of_range",
+					"Mining coordinates must be within -30000000..30000000.");
+		setLaserCoordinates((int)xValue, (int)zValue);
+		return new Object[] { true, laserX, laserZ };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether the laser satellite is actively running.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isRunning(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { isRunning() };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether SINGLE mode completed its target.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isFinished(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { isFinished() };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether the laser output is jammed.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isJammed(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { isJammed() };
+	}
+
+	@Callback(doc = "function():string -- Returns single, line_x, line_z, or spiral.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getMode(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { getModeName() };
+	}
+
+	@Callback(doc = "function(mode:string):boolean, string -- Sets the mining mode while idle.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setMode(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		if(isRunning())
+			return OpenComputersComponentAccess.mutatorError("busy",
+					"Mining mode cannot be changed while the laser is running.");
+		MODE requested = parseMode(args.checkString(0));
+		if(requested == null)
+			return OpenComputersComponentAccess.mutatorError("invalid_mode",
+					"Mode must be single, line_x, line_z, or spiral.");
+		setMode(requested);
+		return new Object[] { true, getModeName() };
+	}
+
+	@Callback(doc = "function():boolean, boolean -- Attempts to clear a jam and returns the previous jam state.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] unjam(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		boolean wasJammed = isJammed();
+		if(wasJammed)
+			attempUnjam();
+		onAutomationTargetChanged();
+		return new Object[] { true, wasJammed };
+	}
+
+	@Callback(doc = "function():table -- Returns structure, energy, redstone, target, mode, and run state.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		boolean complete = isComplete();
+		boolean hasLens = glassPanel != null;
+		boolean energy = hasEnergy();
+		boolean powered = worldObj.isBlockIndirectlyGettingPowered(
+				xCoord, yCoord, zCoord);
+		boolean canSee = canMachineSeeEarth();
+		boolean inWarp = worldObj.provider instanceof WorldProviderStation
+				&& ((WorldProviderStation)worldObj.provider)
+						.getDimensionProperties(xCoord, zCoord)
+						.getParentPlanet() == SpaceObjectManager.WARPDIMID;
+		boolean validTarget = worldObj.provider instanceof WorldProviderStation
+				&& !inWarp;
+
+		String state;
+		if(!complete)
+			state = "incomplete_multiblock";
+		else if(!hasLens)
+			state = "no_lens";
+		else if(!energy)
+			state = "no_energy";
+		else if(inWarp)
+			state = "in_warp";
+		else if(!validTarget)
+			state = "invalid_target";
+		else if(isJammed())
+			state = "jammed";
+		else if(isFinished())
+			state = "finished";
+		else if(!powered)
+			state = "redstone_off";
+		else if(isRunning())
+			state = "running";
+		else
+			state = "ready";
+
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("x", laserX);
+		status.put("z", laserZ);
+		status.put("mode", getModeName());
+		status.put("running", isRunning());
+		status.put("finished", isFinished());
+		status.put("jammed", isJammed());
+		status.put("multiblockComplete", complete);
+		status.put("hasLens", hasLens);
+		status.put("hasEnergy", energy);
+		status.put("redstonePowered", powered);
+		status.put("canSeeTarget", canSee);
+		status.put("state", state);
+		return new Object[] { status };
 	}
 }

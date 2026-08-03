@@ -3,10 +3,19 @@ package zmaster587.advancedRocketry.tile.station;
 import io.netty.buffer.ByteBuf;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.Environment;
+import li.cil.oc.api.network.Message;
+import li.cil.oc.api.network.Node;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -23,7 +32,13 @@ import zmaster587.advancedRocketry.entity.EntityUIButton;
 import zmaster587.advancedRocketry.entity.EntityUIPlanet;
 import zmaster587.advancedRocketry.entity.EntityUIStar;
 import zmaster587.advancedRocketry.inventory.TextureResources;
+import zmaster587.advancedRocketry.integration.CompatibilityMgr;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess.Result;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersNetworkNodeSupport;
+import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationDestinationService;
 import zmaster587.advancedRocketry.stations.StationTarget;
 import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.libVulpes.LibVulpes;
@@ -39,7 +54,8 @@ import zmaster587.libVulpes.network.PacketMachine;
 import zmaster587.libVulpes.util.INetworkMachine;
 import zmaster587.libVulpes.util.ZUtils.RedstoneState;
 
-public class TilePlanetaryHologram extends TileEntity implements IButtonInventory, IModularInventory, ISliderBar, INetworkMachine {
+@Optional.Interface(iface = "li.cil.oc.api.network.Environment", modid = "OpenComputers")
+public class TilePlanetaryHologram extends TileEntity implements IButtonInventory, IModularInventory, ISliderBar, INetworkMachine, Environment {
 
 	private List<EntityUIPlanet> entities;
 	private List<EntityUIStar> starEntities;
@@ -57,8 +73,15 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 	private float size;
 	private static final byte SCALEPACKET = 0;
 	private static final byte STATEUPDATE = 1;
+	private static final double MINIMUM_HOLOGRAM_SCALE = 0.8D;
+	private static final double MAXIMUM_HOLOGRAM_SCALE = 10.8D;
+	private static final double HOLOGRAM_SCALE_STEP = 0.1D;
 	private boolean allowUpdate = true;  //Hack to get around the delay in entity position
 	private boolean stellarMode;
+	private Object openComputersNode;
+	private NBTTagCompound pendingOpenComputersNodeData;
+	private boolean openComputersSignalBaseline;
+	private int openComputersLastDestination;
 
 	public TilePlanetaryHologram() {
 		entities = new LinkedList<EntityUIPlanet>();
@@ -76,8 +99,15 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 	@Override
 	public void invalidate() {
+		detachOpenComputersNode();
 		super.invalidate();
 		cleanup();
+	}
+
+	@Override
+	public void onChunkUnload() {
+		detachOpenComputersNode();
+		super.onChunkUnload();
 	}
 
 	private void cleanup() {
@@ -118,6 +148,10 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 	@Override
 	public void updateEntity() {
 		if(!worldObj.isRemote) {
+			if(CompatibilityMgr.openComputersLoaded) {
+				ensureOpenComputersNode();
+				updateOpenComputersDestinationSignal();
+			}
 			if(isEnabled()) {
 
 				if(onTime < 1)
@@ -209,12 +243,16 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 			else {
 				ISpaceObject station = SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords(this.xCoord, this.zCoord);
 				StationTarget target = targetResolver.resolve(id);
-				if(station != null
+				if(station instanceof SpaceObject
 						&& station.getOrbitingPlanetId()
 								!= SpaceObjectManager.WARPDIMID
 						&& target.getKind()
 								== StationTarget.Kind.DIMENSION) {
-					station.setDestOrbitingBody(id);
+					StationDestinationService.Result selection =
+							StationDestinationService.setDestination(
+									(SpaceObject)station, id);
+					if(!selection.isSuccess())
+						return;
 
 				if(selectedPlanet != null && selectedPlanet.getPlanetID() == id) {
 					centeredEntity = selectedPlanet;
@@ -337,7 +375,7 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 	}
 
 	private void updateText() {
-		if(worldObj.isRemote) {
+		if(worldObj != null && worldObj.isRemote) {
 
 			//numThrusters.setText("Number Of Thrusters: 0");
 			targetGrav.setText(String.format("%s %f", LibVulpes.proxy.getLocalizedString("msg.planetholo.size"), getHologramSize()));
@@ -346,6 +384,23 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 	private float getHologramSize() {
 		return (size*10 + 0.8f);
+	}
+
+	private double setHologramScale(double requestedScale) {
+		double clamped = Math.max(MINIMUM_HOLOGRAM_SCALE,
+				Math.min(MAXIMUM_HOLOGRAM_SCALE, requestedScale));
+		double quantized = Math.round(clamped/HOLOGRAM_SCALE_STEP)
+				* HOLOGRAM_SCALE_STEP;
+		float newSize = (float)((quantized-MINIMUM_HOLOGRAM_SCALE)/10.0D);
+		if(size != newSize) {
+			size = newSize;
+			updateText();
+			if(worldObj != null && !worldObj.isRemote) {
+				markDirty();
+				worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+			}
+		}
+		return Math.round(getHologramSize()*10.0D)/10.0D;
 	}
 
 	private float getInterpHologramSize() {
@@ -369,8 +424,8 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 	@Override
 	public void setProgress(int id, int progress) {
-		size = progress/100f;
-
+		setHologramScale(MINIMUM_HOLOGRAM_SCALE
+				+ Math.max(0, Math.min(100, progress))/10.0D);
 	}
 
 	@Override
@@ -390,9 +445,8 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 
 	@Override
 	public void setProgressByUser(int id, int progress) {
-		size = progress/100f;
+		setProgress(id, progress);
 		PacketHandler.sendToServer(new PacketMachine(this, SCALEPACKET));
-		updateText();
 	}
 
 	@Override
@@ -422,7 +476,8 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
 		if(id == SCALEPACKET) {
-			size = nbt.getFloat("scale");
+			setHologramScale(nbt.getFloat("scale")*10.0D
+					+ MINIMUM_HOLOGRAM_SCALE);
 		}
 		else if (id == STATEUPDATE) {
 			state = RedstoneState.values()[nbt.getByte("state")];
@@ -447,6 +502,7 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 	public Packet getDescriptionPacket() {
 		NBTTagCompound nbt = new NBTTagCompound();
 		state.writeToNBT(nbt);
+		nbt.setFloat("hologramSize", size);
 		
 		return new S35PacketUpdateTileEntity(xCoord,yCoord,zCoord,0, nbt);
 	}
@@ -458,12 +514,18 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 		
 		state = RedstoneState.createFromNBT(pkt.func_148857_g());
 		redstoneControl.setRedstoneState(state);
+		if(pkt.func_148857_g().hasKey("hologramSize"))
+			setHologramScale(pkt.func_148857_g()
+					.getFloat("hologramSize")*10.0D
+					+ MINIMUM_HOLOGRAM_SCALE);
 	}
 	
 	@Override
 	public void writeToNBT(NBTTagCompound compound) {
 		super.writeToNBT(compound);
 		state.writeToNBT(compound);
+		compound.setFloat("hologramSize", size);
+		writeOpenComputersNode(compound);
 	}
 
 	@Override
@@ -471,5 +533,215 @@ public class TilePlanetaryHologram extends TileEntity implements IButtonInventor
 		super.readFromNBT(compound);
 		state = RedstoneState.createFromNBT(compound);
 		redstoneControl.setRedstoneState(state);
+		if(compound.hasKey("hologramSize"))
+			setHologramScale(compound.getFloat("hologramSize")*10.0D
+					+ MINIMUM_HOLOGRAM_SCALE);
+		else
+			setHologramScale(1.0D);
+		pendingOpenComputersNodeData = compound.hasKey("openComputersNode")
+				? compound.getCompoundTag("openComputersNode") : null;
+		openComputersSignalBaseline = false;
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void ensureOpenComputersNode() {
+		if(openComputersNode == null) {
+			openComputersNode = OpenComputersNetworkNodeSupport.create(this,
+					"planet_selector", pendingOpenComputersNodeData);
+			pendingOpenComputersNodeData = null;
+		}
+		OpenComputersNetworkNodeSupport.join(this, openComputersNode);
+	}
+
+	private void detachOpenComputersNode() {
+		if(CompatibilityMgr.openComputersLoaded && openComputersNode != null)
+			detachLoadedOpenComputersNode();
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void detachLoadedOpenComputersNode() {
+		pendingOpenComputersNodeData =
+				OpenComputersNetworkNodeSupport.save(openComputersNode);
+		OpenComputersNetworkNodeSupport.remove(openComputersNode);
+		openComputersNode = null;
+	}
+
+	private void writeOpenComputersNode(NBTTagCompound compound) {
+		if(pendingOpenComputersNodeData != null)
+			compound.setTag("openComputersNode",
+					pendingOpenComputersNodeData);
+		if(CompatibilityMgr.openComputersLoaded && openComputersNode != null)
+			writeLoadedOpenComputersNode(compound);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void writeLoadedOpenComputersNode(NBTTagCompound compound) {
+		compound.setTag("openComputersNode",
+				OpenComputersNetworkNodeSupport.save(openComputersNode));
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void updateOpenComputersDestinationSignal() {
+		ISpaceObject object = SpaceObjectManager.getSpaceManager()
+				.getSpaceStationFromBlockCoords(xCoord, zCoord);
+		if(object == null) {
+			openComputersSignalBaseline = false;
+			return;
+		}
+		int destination = object.getDestOrbitingBody();
+		if(!openComputersSignalBaseline) {
+			openComputersLastDestination = destination;
+			openComputersSignalBaseline = true;
+			return;
+		}
+		if(destination != openComputersLastDestination) {
+			openComputersLastDestination = destination;
+			OpenComputersNetworkNodeSupport.sendSignal(openComputersNode,
+					"planet_selected", object.getId(), destination);
+		}
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public Node node() {
+		return openComputersNode instanceof Node
+				? (Node)openComputersNode : null;
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onConnect(Node node) {
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onDisconnect(Node node) {
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onMessage(Message message) {
+	}
+
+	private SpaceObject getAutomationStation(Result access) {
+		return access.getSpaceObject() instanceof SpaceObject
+				? (SpaceObject)access.getSpaceObject() : null;
+	}
+
+	@Callback(doc = "function():number -- Returns the current station orbit target; unavailable during warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCurrentPlanet(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		if(access.getSpaceObject().getOrbitingPlanetId()
+				== SpaceObjectManager.WARPDIMID)
+			return OpenComputersComponentAccess.getterError("in_warp",
+					"Station is currently in warp.");
+		return new Object[] { access.getSpaceObject().getOrbitingPlanetId() };
+	}
+
+	@Callback(doc = "function():number -- Returns the committed station destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getDestination(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { access.getSpaceObject().getDestOrbitingBody() };
+	}
+
+	@Callback(doc = "function(id?:number):table -- Describes a station target; defaults to the committed destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getTargetInfo(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		int id = args.count() == 0 ? station.getDestOrbitingBody()
+				: args.checkInteger(0);
+		StationTarget target = StationTargetResolver.getInstance().resolve(id);
+		if(!target.isDestination())
+			return OpenComputersComponentAccess.getterError("invalid_target",
+					"Requested id is not a valid station target.");
+		return new Object[] { StationDestinationService.describe(station,
+				target) };
+	}
+
+	@Callback(doc = "function(id:number):boolean, number|string -- Selects a known planet or black-hole target.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] selectTarget(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.mutatorError(
+					"not_on_station", "Unsupported station implementation.");
+		int id = args.checkInteger(0);
+		StationDestinationService.Result result =
+				StationDestinationService.setDestination(station, id);
+		if(!result.isSuccess())
+			return OpenComputersComponentAccess.mutatorError(
+					result.getErrorCode(), result.getErrorMessage());
+		markDirty();
+		worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+		return new Object[] { true, id };
+	}
+
+	@Callback(doc = "function():number -- Returns the actual hologram scale multiplier.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getScale(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { Math.round(getHologramSize()*10.0D)/10.0D };
+	}
+
+	@Callback(doc = "function(multiplier:number):boolean, number|string -- Sets hologram scale from 0.8 to 10.8 in 0.1 steps.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setScale(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		double scale = args.checkDouble(0);
+		if(Double.isNaN(scale) || Double.isInfinite(scale))
+			return OpenComputersComponentAccess.mutatorError("not_finite",
+					"Hologram scale must be finite.");
+		if(scale < MINIMUM_HOLOGRAM_SCALE
+				|| scale > MAXIMUM_HOLOGRAM_SCALE)
+			return OpenComputersComponentAccess.mutatorError("out_of_range",
+					"Hologram scale must be between 0.8 and 10.8.");
+		return new Object[] { true, setHologramScale(scale) };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether the hologram is enabled by its redstone mode.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isEnabled(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { isEnabled() };
+	}
+
+	@Callback(doc = "function():table -- Returns station, target, scale, enabled, and warp state.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("stationId", access.getSpaceObject().getId());
+		status.put("currentTargetId",
+				access.getSpaceObject().getOrbitingPlanetId());
+		status.put("destinationTargetId",
+				access.getSpaceObject().getDestOrbitingBody());
+		status.put("scale", Math.round(getHologramSize()*10.0D)/10.0D);
+		status.put("enabled", isEnabled());
+		status.put("inWarp", access.getSpaceObject().getOrbitingPlanetId()
+				== SpaceObjectManager.WARPDIMID);
+		return new Object[] { status };
 	}
 }

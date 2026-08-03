@@ -1,10 +1,17 @@
 package zmaster587.advancedRocketry.tile.infrastructure;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
 import io.netty.buffer.ByteBuf;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.SimpleComponent;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.item.ItemStack;
@@ -19,10 +26,15 @@ import net.minecraftforge.common.util.ForgeDirection;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.EntityRocketBase;
 import zmaster587.advancedRocketry.api.IInfrastructure;
+import zmaster587.advancedRocketry.api.StatsRocket;
+import zmaster587.advancedRocketry.api.fuel.FuelRegistry.FuelType;
 import zmaster587.advancedRocketry.api.satellite.SatelliteBase;
 import zmaster587.advancedRocketry.dimension.DimensionManager;
 import zmaster587.advancedRocketry.entity.EntityRocket;
 import zmaster587.advancedRocketry.inventory.TextureResources;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess.Result;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersFuelTypeCodec;
 import zmaster587.advancedRocketry.api.IMission;
 import zmaster587.libVulpes.LibVulpes;
 import zmaster587.libVulpes.client.util.IndicatorBarImage;
@@ -44,7 +56,8 @@ import zmaster587.libVulpes.util.IAdjBlockUpdate;
 import zmaster587.libVulpes.util.INetworkMachine;
 import zmaster587.libVulpes.util.ZUtils.RedstoneState;
 
-public class TileEntityMoniteringStation extends TileEntity  implements IModularInventory, IAdjBlockUpdate, IInfrastructure, ILinkableTile, INetworkMachine, IButtonInventory, IProgressBar  {
+@Optional.Interface(iface = "li.cil.oc.api.network.SimpleComponent", modid = "OpenComputers")
+public class TileEntityMoniteringStation extends TileEntity  implements IModularInventory, IAdjBlockUpdate, IInfrastructure, ILinkableTile, INetworkMachine, IButtonInventory, IProgressBar, SimpleComponent  {
 
 	EntityRocketBase linkedRocket;
 	IMission mission;
@@ -134,6 +147,15 @@ public class TileEntityMoniteringStation extends TileEntity  implements IModular
 	public boolean linkRocket(EntityRocketBase rocket) {
 		this.linkedRocket = rocket;
 		return true;
+	}
+
+	public EntityRocketBase getLinkedRocketForAutomation() {
+		return linkedRocket != null && !linkedRocket.isDead
+				? linkedRocket : null;
+	}
+
+	public IMission getLinkedMissionForAutomation() {
+		return mission;
 	}
 	
 
@@ -390,5 +412,286 @@ public class TileEntityMoniteringStation extends TileEntity  implements IModular
 	@Override
 	public boolean canRenderConnection() {
 		return false;
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public String getComponentName() {
+		return "monitoring_station";
+	}
+
+	private Object[] rocketNotFound() {
+		return OpenComputersComponentAccess.getterError("rocket_not_found",
+				"Monitoring station has no linked rocket.");
+	}
+
+	private Object[] missionNotFound() {
+		return OpenComputersComponentAccess.getterError("mission_not_found",
+				"Monitoring station has no linked mission.");
+	}
+
+	private StatsRocket getLinkedStats() {
+		EntityRocketBase rocket = getLinkedRocketForAutomation();
+		return rocket == null ? null : rocket.getRocketStats();
+	}
+
+	private FuelType getFuelType(Arguments args) {
+		return OpenComputersFuelTypeCodec.parse(args.checkString(0));
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether a live rocket is linked.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isRocketLinked(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { getLinkedRocketForAutomation() != null };
+	}
+
+	@Callback(doc = "function():boolean, string -- Requests launch through the normal pre-launch path.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] prepareLaunch(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		EntityRocketBase rocket = getLinkedRocketForAutomation();
+		if(rocket == null)
+			return OpenComputersComponentAccess.mutatorError(
+					"rocket_not_found",
+					"Monitoring station has no linked rocket.");
+		rocket.prepareLaunch();
+		return new Object[] { true, "requested" };
+	}
+
+	@Callback(doc = "function():boolean, string -- Safe alias for prepareLaunch; never calls raw launch.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] launch(Context context, Arguments args) {
+		return prepareLaunch(context, args);
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket height or mission orbit estimate.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getRocketHeight(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		EntityRocketBase rocket = getLinkedRocketForAutomation();
+		if(rocket != null)
+			return new Object[] { rocket.posY };
+		if(getLinkedMissionForAutomation() != null)
+			return new Object[] { Configuration.orbit };
+		return rocketNotFound();
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket vertical velocity.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getRocketVelocity(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		EntityRocketBase rocket = getLinkedRocketForAutomation();
+		return rocket == null ? rocketNotFound()
+				: new Object[] { rocket.motionY };
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket thrust.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getRocketThrust(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		return stats == null ? rocketNotFound()
+				: new Object[] { stats.getThrust() };
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket weight.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getRocketWeight(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		return stats == null ? rocketNotFound()
+				: new Object[] { stats.getWeight() };
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket drilling power.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getDrillingPower(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		return stats == null ? rocketNotFound()
+				: new Object[] { stats.getDrillingPower() };
+	}
+
+	@Callback(doc = "function():number -- Returns linked rocket acceleration in native 1.7.10 units.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getAcceleration(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		return stats == null ? rocketNotFound()
+				: new Object[] { stats.getAcceleration() };
+	}
+
+	@Callback(doc = "function(type:string):number -- Returns amount of a named rocket fuel type.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getFuelAmount(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		if(stats == null)
+			return rocketNotFound();
+		FuelType type = getFuelType(args);
+		if(type == null)
+			return OpenComputersComponentAccess.getterError(
+					"fuel_type_not_found", "Unknown rocket fuel type.");
+		return new Object[] { stats.getFuelAmount(type) };
+	}
+
+	@Callback(doc = "function(type:string):number -- Returns capacity of a named rocket fuel type.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getFuelCapacity(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		if(stats == null)
+			return rocketNotFound();
+		FuelType type = getFuelType(args);
+		if(type == null)
+			return OpenComputersComponentAccess.getterError(
+					"fuel_type_not_found", "Unknown rocket fuel type.");
+		return new Object[] { stats.getFuelCapacity(type) };
+	}
+
+	@Callback(doc = "function(type:string):number -- Returns per-tick rate of a named rocket fuel type.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getFuelRate(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		if(stats == null)
+			return rocketNotFound();
+		FuelType type = getFuelType(args);
+		if(type == null)
+			return OpenComputersComponentAccess.getterError(
+					"fuel_type_not_found", "Unknown rocket fuel type.");
+		return new Object[] { stats.getFuelRate(type) };
+	}
+
+	@Callback(doc = "function(type:string):table -- Returns amount, capacity, and rate for a named rocket fuel type.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getFuelStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		if(stats == null)
+			return rocketNotFound();
+		FuelType type = getFuelType(args);
+		if(type == null)
+			return OpenComputersComponentAccess.getterError(
+					"fuel_type_not_found", "Unknown rocket fuel type.");
+		Map<String, Object> fuel = new LinkedHashMap<String, Object>();
+		fuel.put("type", OpenComputersFuelTypeCodec.name(type));
+		fuel.put("amount", stats.getFuelAmount(type));
+		fuel.put("capacity", stats.getFuelCapacity(type));
+		fuel.put("rate", stats.getFuelRate(type));
+		return new Object[] { fuel };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether the linked rocket has a pilot seat.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] hasSeat(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		StatsRocket stats = getLinkedStats();
+		return stats == null ? rocketNotFound()
+				: new Object[] { stats.hasSeat() };
+	}
+
+	@Callback(doc = "function():table -- Returns a linked rocket state and stats snapshot.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getRocketStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		EntityRocketBase rocket = getLinkedRocketForAutomation();
+		StatsRocket stats = getLinkedStats();
+		if(rocket == null || stats == null)
+			return rocketNotFound();
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("height", rocket.posY);
+		status.put("velocity", rocket.motionY);
+		status.put("thrust", stats.getThrust());
+		status.put("weight", stats.getWeight());
+		status.put("drillingPower", stats.getDrillingPower());
+		status.put("acceleration", stats.getAcceleration());
+		status.put("hasSeat", stats.hasSeat());
+		status.put("alive", !rocket.isDead);
+		return new Object[] { status };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether a mission is linked.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isMissionLinked(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { getLinkedMissionForAutomation() != null };
+	}
+
+	@Callback(doc = "function():number -- Returns normalized linked mission progress.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getMissionProgress(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		IMission linkedMission = getLinkedMissionForAutomation();
+		if(linkedMission == null)
+			return missionNotFound();
+		double progress = linkedMission.getProgress(worldObj);
+		return new Object[] { Math.max(0.0D, Math.min(1.0D, progress)) };
+	}
+
+	@Callback(doc = "function():number -- Returns linked mission remaining time in seconds.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getMissionRemainingTime(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		IMission linkedMission = getLinkedMissionForAutomation();
+		return linkedMission == null ? missionNotFound()
+				: new Object[] { Math.max(0,
+						linkedMission.getTimeRemainingInSeconds()) };
+	}
+
+	@Callback(doc = "function():table -- Returns linked mission id, origin, progress, and remaining seconds.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getMissionStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveTile(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		IMission linkedMission = getLinkedMissionForAutomation();
+		if(linkedMission == null)
+			return missionNotFound();
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("missionId", String.valueOf(
+				linkedMission.getMissionId()));
+		status.put("originDimension",
+				linkedMission.getOriginatingDimention());
+		status.put("progress", Math.max(0.0D, Math.min(1.0D,
+				linkedMission.getProgress(worldObj))));
+		status.put("remainingSeconds", Math.max(0,
+				linkedMission.getTimeRemainingInSeconds()));
+		return new Object[] { status };
 	}
 }

@@ -2,6 +2,7 @@ package zmaster587.advancedRocketry.tile.station;
 
 import static org.junit.Assert.assertEquals;
 
+import cpw.mods.fml.common.registry.GameRegistry;
 import cpw.mods.fml.relauncher.Side;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -21,6 +22,8 @@ public class StationControllerTargetStateTest {
 		previousProxy = LibVulpes.proxy;
 		if(LibVulpes.proxy == null)
 			LibVulpes.proxy = new CommonProxy();
+		GameRegistry.registerTileEntity(TileStationOrientationControl.class,
+				"AROrientationControl");
 	}
 
 	@AfterClass

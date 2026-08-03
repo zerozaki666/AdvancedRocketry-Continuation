@@ -5,6 +5,10 @@ import io.netty.buffer.ByteBuf;
 import java.util.LinkedList;
 import java.util.List;
 
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.SimpleComponent;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -12,6 +16,9 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersControllerAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersControllerAccess.Result;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersValueCodec;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.advancedRocketry.network.PacketStationUpdate;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
@@ -25,9 +32,15 @@ import zmaster587.libVulpes.inventory.modules.ModuleText;
 import zmaster587.libVulpes.network.PacketHandler;
 import zmaster587.libVulpes.network.PacketMachine;
 import zmaster587.libVulpes.util.INetworkMachine;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
 
-public class TileStationGravityController extends TileEntity implements IModularInventory, INetworkMachine, ISliderBar {
+@Optional.Interface(iface = "li.cil.oc.api.network.SimpleComponent", modid = "OpenComputers")
+public class TileStationGravityController extends TileEntity implements IModularInventory, INetworkMachine, ISliderBar, SimpleComponent {
+
+	private static final int SLIDER_ID = 0;
+	private static final String NETWORK_PROGRESS_NBT = "progress";
+	private static final int LEGACY_DEFAULT_GRAVITY_PERCENT = 15;
 
 	int gravity;
 	int progress;
@@ -35,6 +48,8 @@ public class TileStationGravityController extends TileEntity implements IModular
 	private ModuleText moduleGrav, numGravPylons, maxGravBuildSpeed, targetGrav;
 
 	public TileStationGravityController() {
+		gravity = LEGACY_DEFAULT_GRAVITY_PERCENT;
+		progress = gravity-OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT;
 		moduleGrav = new ModuleText(6, 15, LibVulpes.proxy.getLocalizedString("msg.stationgravctrl.alt"), 0xaa2020);
 		//numGravPylons = new ModuleText(10, 25, "Number Of Thrusters: ", 0xaa2020);
 		maxGravBuildSpeed = new ModuleText(6, 25, LibVulpes.proxy.getLocalizedString("msg.stationgravctrl.maxaltrate"), 0xaa2020);
@@ -61,15 +76,15 @@ public class TileStationGravityController extends TileEntity implements IModular
 		nbt.setInteger("gravity", gravity);
 
 		S35PacketUpdateTileEntity packet = new S35PacketUpdateTileEntity(xCoord, yCoord, zCoord, 0, nbt);
-		return super.getDescriptionPacket();
+		return packet;
 	}
 
 	@Override
 	public void onDataPacket(NetworkManager net, S35PacketUpdateTileEntity pkt) {
-		super.onDataPacket(net, pkt);
-
-		gravity = pkt.func_148857_g().getInteger("gravity");
-
+		int targetPercent = clampGravityPercent(
+				pkt.func_148857_g().getInteger("gravity"));
+		gravity = targetPercent;
+		progress = gravity-OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT;
 	}
 
 	@Override
@@ -102,7 +117,8 @@ public class TileStationGravityController extends TileEntity implements IModular
 
 				if(object != null) {
 					if(gravity == 0)
-						gravity = 15;
+						setTargetGravityPercent(
+								LEGACY_DEFAULT_GRAVITY_PERCENT);
 					double targetGravity = gravity/100D;
 					double angVel = object.getProperties().getGravitationalMultiplier();
 					double acc = 0.001;
@@ -144,7 +160,7 @@ public class TileStationGravityController extends TileEntity implements IModular
 
 	@Override
 	public void writeDataToNetwork(ByteBuf out, byte id) {
-		if(id == 0) {
+		if(id == SLIDER_ID) {
 			out.writeShort(progress);
 		}
 	}
@@ -152,15 +168,16 @@ public class TileStationGravityController extends TileEntity implements IModular
 	@Override
 	public void readDataFromNetwork(ByteBuf in, byte packetId,
 			NBTTagCompound nbt) {
-		if(packetId == 0) {
-			setProgress(0, in.readShort());
-		}
+		if(packetId == SLIDER_ID)
+			nbt.setShort(NETWORK_PROGRESS_NBT, in.readShort());
 	}
 
 	@Override
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
-
+		if(side == Side.SERVER && id == SLIDER_ID)
+			setProgress(SLIDER_ID,
+					nbt.getShort(NETWORK_PROGRESS_NBT));
 	}
 
 	@Override
@@ -173,7 +190,11 @@ public class TileStationGravityController extends TileEntity implements IModular
 	public void readFromNBT(NBTTagCompound nbt) {
 		super.readFromNBT(nbt);
 		gravity = nbt.getShort("numRotations");
-		progress = gravity -10;
+		if(gravity == 0)
+			gravity = LEGACY_DEFAULT_GRAVITY_PERCENT;
+		gravity = clampGravityPercent(gravity);
+		progress = gravity
+				-OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT;
 	}
 
 
@@ -184,9 +205,9 @@ public class TileStationGravityController extends TileEntity implements IModular
 
 	@Override
 	public void setProgress(int id, int progress) {
-
-		this.progress = progress;
-		gravity = progress + 10;
+		if(id == SLIDER_ID)
+			setTargetGravityPercent(progress
+					+OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT);
 	}
 
 	@Override
@@ -207,6 +228,75 @@ public class TileStationGravityController extends TileEntity implements IModular
 	@Override
 	public void setProgressByUser(int id, int progress) {
 		setProgress(id, progress);
-		PacketHandler.sendToServer(new PacketMachine(this, (byte)0));
+		PacketHandler.sendToServer(new PacketMachine(this, (byte)SLIDER_ID));
+	}
+
+	int setTargetGravityPercent(int targetPercent) {
+		int effectivePercent = clampGravityPercent(targetPercent);
+		int effectiveProgress = effectivePercent
+				-OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT;
+		if(gravity != effectivePercent || progress != effectiveProgress) {
+			gravity = effectivePercent;
+			progress = effectiveProgress;
+			onTargetChanged();
+		}
+		return effectivePercent;
+	}
+
+	private int clampGravityPercent(int targetPercent) {
+		return Math.max(OpenComputersValueCodec.MINIMUM_GRAVITY_PERCENT,
+				Math.min(OpenComputersValueCodec.MAXIMUM_GRAVITY_PERCENT,
+						targetPercent));
+	}
+
+	private void onTargetChanged() {
+		if(worldObj != null && !worldObj.isRemote) {
+			markDirty();
+			worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+		}
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public String getComponentName() {
+		return "gravity_controller";
+	}
+
+	@Callback(doc = "function(multiplier:number):boolean, number|string -- Sets the target station gravity multiplier; valid range 0.10..1.00, quantized to 0.01.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setGravityMultiplier(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+
+		double multiplier = args.checkDouble(0);
+		if(!OpenComputersValueCodec.isFinite(multiplier))
+			return OpenComputersControllerAccess.mutatorError(
+					"not_finite", "Gravity multiplier must be finite.");
+		if(!OpenComputersValueCodec.isInRange(multiplier,
+				OpenComputersValueCodec.MINIMUM_GRAVITY_MULTIPLIER,
+				OpenComputersValueCodec.MAXIMUM_GRAVITY_MULTIPLIER))
+			return OpenComputersControllerAccess.mutatorError(
+					"out_of_range",
+					"Gravity multiplier must be between 0.10 and 1.00.");
+
+		int effectivePercent = setTargetGravityPercent(
+				OpenComputersValueCodec.gravityPercentFromMultiplier(
+						multiplier));
+		return new Object[] { true, OpenComputersValueCodec
+				.gravityMultiplierFromPercent(effectivePercent) };
+	}
+
+	@Callback(doc = "function():number, number -- Returns the current and target station gravity multipliers.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getGravityMultiplier(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] {
+				access.getSpaceObject().getProperties()
+						.getGravitationalMultiplier(),
+				OpenComputersValueCodec.gravityMultiplierFromPercent(
+						gravity) };
 	}
 }

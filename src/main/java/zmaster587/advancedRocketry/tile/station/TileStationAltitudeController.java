@@ -2,9 +2,15 @@ package zmaster587.advancedRocketry.tile.station;
 
 import io.netty.buffer.ByteBuf;
 
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.SimpleComponent;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -12,6 +18,9 @@ import net.minecraft.network.Packet;
 import net.minecraft.network.play.server.S35PacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import zmaster587.advancedRocketry.api.stations.ISpaceObject;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersControllerAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersControllerAccess.Result;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersValueCodec;
 import zmaster587.advancedRocketry.inventory.TextureResources;
 import zmaster587.advancedRocketry.network.PacketStationUpdate;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
@@ -25,9 +34,11 @@ import zmaster587.libVulpes.inventory.modules.ModuleText;
 import zmaster587.libVulpes.network.PacketHandler;
 import zmaster587.libVulpes.network.PacketMachine;
 import zmaster587.libVulpes.util.INetworkMachine;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
 
-public class TileStationAltitudeController extends TileEntity implements IModularInventory, INetworkMachine, ISliderBar {
+@Optional.Interface(iface = "li.cil.oc.api.network.SimpleComponent", modid = "OpenComputers")
+public class TileStationAltitudeController extends TileEntity implements IModularInventory, INetworkMachine, ISliderBar, SimpleComponent {
 
 	private static final int TARGET_ALTITUDE_SLIDER_ID = 0;
 	private static final int ALTITUDE_CHANGE_RATE_SLIDER_ID = 1;
@@ -42,6 +53,7 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	private ModuleText moduleGrav, numGravPylons, maxGravBuildSpeed, targetGrav;
 
 	public TileStationAltitudeController() {
+		gravity = OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE;
 		moduleGrav = new ModuleText(6, 15, "Altitude: ", 0xaa2020);
 		//numGravPylons = new ModuleText(10, 25, "Number Of Thrusters: ", 0xaa2020);
 		targetGrav = new ModuleText(6, 30, LibVulpes.proxy.getLocalizedString("msg.stationaltctrl.tgtalt"), 0x202020);
@@ -73,17 +85,24 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	public Packet getDescriptionPacket() {
 		NBTTagCompound nbt = new NBTTagCompound();
 		nbt.setInteger("gravity", gravity);
+		nbt.setInteger(ALTITUDE_CHANGE_RATE_NBT,
+				altitudeChangeRateProgress);
 
 		S35PacketUpdateTileEntity packet = new S35PacketUpdateTileEntity(xCoord, yCoord, zCoord, 0, nbt);
-		return super.getDescriptionPacket();
+		return packet;
 	}
 
 	@Override
 	public void onDataPacket(NetworkManager net, S35PacketUpdateTileEntity pkt) {
-		super.onDataPacket(net, pkt);
-
-		gravity = pkt.func_148857_g().getInteger("gravity");
-
+		NBTTagCompound nbt = pkt.func_148857_g();
+		progress = clampTargetAltitudeProgress(
+				nbt.getInteger("gravity")
+				-OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE);
+		gravity = progress
+				+OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE;
+		altitudeChangeRateProgress =
+				StationAltitudeChangeRate.clampSliderProgress(
+						nbt.getInteger(ALTITUDE_CHANGE_RATE_NBT));
 	}
 
 	@Override
@@ -176,11 +195,10 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	@Override
 	public void useNetworkData(EntityPlayer player, Side side, byte id,
 			NBTTagCompound nbt) {
-		if(id == TARGET_ALTITUDE_SLIDER_ID
-				|| id == ALTITUDE_CHANGE_RATE_SLIDER_ID) {
+		if(side == Side.SERVER
+				&& (id == TARGET_ALTITUDE_SLIDER_ID
+				|| id == ALTITUDE_CHANGE_RATE_SLIDER_ID)) {
 			setProgress(id, nbt.getShort(NETWORK_PROGRESS_NBT));
-			if(side == Side.SERVER)
-				markDirty();
 		}
 	}
 
@@ -195,11 +213,13 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	@Override
 	public void readFromNBT(NBTTagCompound nbt) {
 		super.readFromNBT(nbt);
-		gravity = nbt.getShort("numRotations");
-		if(nbt.hasKey("numRotations"))
-			progress = Math.max(0, Math.min(
-					getTotalProgress(TARGET_ALTITUDE_SLIDER_ID),
-					gravity-10));
+		gravity = nbt.hasKey("numRotations")
+				? nbt.getShort("numRotations")
+				: OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE;
+		progress = clampTargetAltitudeProgress(gravity
+				-OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE);
+		gravity = progress
+				+OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE;
 		altitudeChangeRateProgress =
 				StationAltitudeChangeRate.clampSliderProgress(
 						nbt.getShort(ALTITUDE_CHANGE_RATE_NBT));
@@ -214,14 +234,10 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 	@Override
 	public void setProgress(int id, int progress) {
 		if(id == TARGET_ALTITUDE_SLIDER_ID) {
-			this.progress = Math.max(0,
-					Math.min(getTotalProgress(id), progress));
-			gravity = this.progress + 10;
+			setTargetAltitudeProgress(progress);
 		}
 		else if(id == ALTITUDE_CHANGE_RATE_SLIDER_ID)
-			altitudeChangeRateProgress =
-					StationAltitudeChangeRate.clampSliderProgress(
-							progress);
+			setAltitudeChangeRateProgress(progress);
 	}
 
 	@Override
@@ -252,5 +268,158 @@ public class TileStationAltitudeController extends TileEntity implements IModula
 		setProgress(id, progress);
 		updateText();
 		PacketHandler.sendToServer(new PacketMachine(this, (byte)id));
+	}
+
+	int setTargetAltitudeProgress(int targetProgress) {
+		int effectiveProgress = clampTargetAltitudeProgress(targetProgress);
+		int effectiveGravity = effectiveProgress
+				+OpenComputersValueCodec.MINIMUM_ORBITAL_DISTANCE;
+		if(progress != effectiveProgress || gravity != effectiveGravity) {
+			progress = effectiveProgress;
+			gravity = effectiveGravity;
+			onTargetChanged();
+		}
+		return effectiveProgress;
+	}
+
+	int setAltitudeChangeRateProgress(int targetProgress) {
+		int effectiveProgress =
+				StationAltitudeChangeRate.clampSliderProgress(
+						targetProgress);
+		if(altitudeChangeRateProgress != effectiveProgress) {
+			altitudeChangeRateProgress = effectiveProgress;
+			onTargetChanged();
+		}
+		return effectiveProgress;
+	}
+
+	private int clampTargetAltitudeProgress(int targetProgress) {
+		return Math.max(0, Math.min(
+				getTotalProgress(TARGET_ALTITUDE_SLIDER_ID),
+				targetProgress));
+	}
+
+	private void onTargetChanged() {
+		if(worldObj != null && !worldObj.isRemote) {
+			markDirty();
+			worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+		}
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public String getComponentName() {
+		return "altitude_controller";
+	}
+
+	@Callback(doc = "function(targetKm:number):boolean, number|string -- Sets the target station altitude in km; valid range 2100..40100, quantized to 200 km.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setTargetAltitude(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+
+		double targetKm = args.checkDouble(0);
+		if(!OpenComputersValueCodec.isFinite(targetKm))
+			return OpenComputersControllerAccess.mutatorError(
+					"not_finite", "Target altitude must be finite.");
+		if(!OpenComputersValueCodec.isInRange(targetKm,
+				OpenComputersValueCodec.MINIMUM_ALTITUDE_KM,
+				OpenComputersValueCodec.MAXIMUM_ALTITUDE_KM))
+			return OpenComputersControllerAccess.mutatorError(
+					"out_of_range",
+					"Target altitude must be between 2100 and 40100 km.");
+
+		int effectiveProgress = setTargetAltitudeProgress(
+				OpenComputersValueCodec.altitudeProgressFromKm(targetKm));
+		return new Object[] { true,
+				OpenComputersValueCodec.altitudeKmFromProgress(
+						effectiveProgress) };
+	}
+
+	@Callback(doc = "function():number -- Returns the saved target station altitude in km.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getTargetAltitude(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] {
+				OpenComputersValueCodec.altitudeKmFromProgress(progress) };
+	}
+
+	@Callback(doc = "function():number -- Returns the current station altitude in km.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCurrentAltitude(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { OpenComputersValueCodec.currentAltitudeKm(
+				access.getSpaceObject().getOrbitalDistance()) };
+	}
+
+	@Callback(doc = "function(multiplier:number):boolean, number|string -- Sets the altitude change-rate multiplier; valid range 1.0..10.0, quantized to 0.5.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setChangeRateMultiplier(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+
+		double multiplier = args.checkDouble(0);
+		if(!OpenComputersValueCodec.isFinite(multiplier))
+			return OpenComputersControllerAccess.mutatorError(
+					"not_finite", "Change-rate multiplier must be finite.");
+		if(!OpenComputersValueCodec.isInRange(multiplier,
+				StationAltitudeChangeRate.MINIMUM_MULTIPLIER,
+				StationAltitudeChangeRate.MAXIMUM_MULTIPLIER))
+			return OpenComputersControllerAccess.mutatorError(
+					"out_of_range",
+					"Change-rate multiplier must be between 1.0 and 10.0.");
+
+		int effectiveProgress = setAltitudeChangeRateProgress(
+				OpenComputersValueCodec
+						.changeRateProgressFromMultiplier(multiplier));
+		return new Object[] { true,
+				OpenComputersValueCodec
+						.changeRateMultiplierFromProgress(
+								effectiveProgress) };
+	}
+
+	@Callback(doc = "function():number -- Returns the saved altitude change-rate multiplier.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getChangeRateMultiplier(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { OpenComputersValueCodec
+				.changeRateMultiplierFromProgress(
+						altitudeChangeRateProgress) };
+	}
+
+	@Callback(doc = "function():table -- Returns station altitude, target, direction, rate multiplier, and station id.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getStatus(Context context, Arguments args) {
+		Result access = OpenComputersControllerAccess.resolve(this);
+		if(!access.isValid())
+			return access.asGetterError();
+
+		ISpaceObject object = access.getSpaceObject();
+		double currentAltitude = OpenComputersValueCodec.currentAltitudeKm(
+				object.getOrbitalDistance());
+		double targetAltitude =
+				OpenComputersValueCodec.altitudeKmFromProgress(progress);
+		String state = Math.abs(currentAltitude-targetAltitude) <= 0.01D
+				? "idle"
+				: currentAltitude < targetAltitude
+						? "ascending" : "descending";
+
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("stationId", object.getId());
+		status.put("state", state);
+		status.put("currentAltitude", currentAltitude);
+		status.put("targetAltitude", targetAltitude);
+		status.put("changeRateMultiplier", OpenComputersValueCodec
+				.changeRateMultiplierFromProgress(
+						altitudeChangeRateProgress));
+		return new Object[] { status };
 	}
 }

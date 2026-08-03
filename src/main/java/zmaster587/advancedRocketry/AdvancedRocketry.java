@@ -257,7 +257,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,)")
+@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,);after:OpenComputers")
 public class AdvancedRocketry {
 
 

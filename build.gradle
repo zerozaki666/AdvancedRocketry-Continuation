@@ -69,11 +69,21 @@ repositories {
         name = 'gt'
         url = 'https://gregtech.overminddl1.com/'
     }
+    maven {
+        name = 'gtnh-releases'
+        url = uri('https://nexus.gtnewhorizons.com/repository/releases/')
+    }
 }
 
 dependencies {
     implementation project(':libVulpes')
     testImplementation 'junit:junit:4.13.2'
+    compileOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
+        transitive = false
+    }
+    testRuntimeOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
+        transitive = false
+    }
     def localMicdoodleCore = fileTree(
             dir: 'libs',
             include: ['MicdoodleCore*.jar'])

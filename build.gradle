@@ -81,6 +81,9 @@ dependencies {
     compileOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
         transitive = false
     }
+    testCompileOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
+        transitive = false
+    }
     testRuntimeOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
         transitive = false
     }

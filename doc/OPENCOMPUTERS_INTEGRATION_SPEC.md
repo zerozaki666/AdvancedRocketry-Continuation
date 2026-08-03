@@ -723,7 +723,7 @@ print("gravity", current, "target", target)
 - GUI packet 与 OC setter 走同一 canonical setter；
 - Gravity/Orientation `readDataFromNetwork` 不提前修改状态；
 - `useNetworkData(..., Side.SERVER, ...)` 应用、clamp 并 mark dirty；
-- Altitude/Gravity description packet 返回有效 packet；
+- Altitude、Orientation、Gravity 的 description packet 均返回完整 target state；
 - 不在 station provider 时三个 controller 均不修改世界状态；
 - hidden NORTH 轴在任意 yaw/pitch callback 后保持原值；
 - 重复设置相同目标不产生多余 dirty/update。
@@ -768,7 +768,7 @@ Orientation 额外验证：
 
 - 修复 Orientation Y/Z NBT 读取；
 - 修复 Gravity/Orientation `PacketMachine` apply path；
-- 修复 Altitude/Gravity target description sync；
+- 修复三个 controller 的完整 target description sync；
 - 抽取 canonical setters 与纯数值 codec；
 - 添加不依赖 OC runtime 的回归测试。
 

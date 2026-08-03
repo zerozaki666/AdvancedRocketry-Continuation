@@ -23,15 +23,33 @@ import zmaster587.libVulpes.tile.multiblock.TileMultiblockMachine;
 
 public class TileCrystallizer extends TileMultiblockMachine implements IModularInventory {
 
+	private static volatile Block structureQuartzCrucible;
+	public static volatile Object[][][] structure;
 
+	static {
+		refreshStructure();
+	}
 
-	public static final Object[][][] structure = { {{AdvancedRocketryBlocks.blockQuartzCrucible, AdvancedRocketryBlocks.blockQuartzCrucible, AdvancedRocketryBlocks.blockQuartzCrucible},
-		{AdvancedRocketryBlocks.blockQuartzCrucible, AdvancedRocketryBlocks.blockQuartzCrucible, AdvancedRocketryBlocks.blockQuartzCrucible}},
+	private static Object[][][] createStructure(Block quartzCrucible) {
+		return new Object[][][] {
+				{{quartzCrucible, quartzCrucible, quartzCrucible},
+					{quartzCrucible, quartzCrucible, quartzCrucible}},
+				{{'I', 'c', 'O'},
+					{"blockCoil", 'P', "blockCoil"}}
+		};
+	}
 
-		{{'I', 'c', 'O'}, 
-			{"blockCoil", 'P', "blockCoil"}},
-
-	};
+	/**
+	 * Rebuilds the structure after block registration.  Some integration mods
+	 * load this tile class before Advanced Rocketry has assigned its block
+	 * singletons; retaining that early null value makes the quartz crucibles
+	 * impossible to project or validate later in the load cycle.
+	 */
+	public static synchronized void refreshStructure() {
+		structureQuartzCrucible =
+				AdvancedRocketryBlocks.blockQuartzCrucible;
+		structure = createStructure(structureQuartzCrucible);
+	}
 
 	Material coil[];
 
@@ -57,6 +75,9 @@ public class TileCrystallizer extends TileMultiblockMachine implements IModularI
 
 	@Override
 	public Object[][][] getStructure() {
+		if(structureQuartzCrucible !=
+				AdvancedRocketryBlocks.blockQuartzCrucible)
+			refreshStructure();
 		return structure;
 	}
 

@@ -19,7 +19,8 @@ public class BlockQuartzCrucible extends BlockCauldron {
 	
 	public BlockQuartzCrucible() {
 		super();
-		setHardness(1F).setResistance(8F).setBlockTextureName("qcrucible");
+		setHardness(1F).setResistance(8F).setBlockName("qcrucible")
+				.setBlockTextureName("qcrucible");
 	}
     
     @Override

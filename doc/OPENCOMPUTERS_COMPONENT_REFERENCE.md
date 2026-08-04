@@ -17,6 +17,41 @@ assert(address, "No connected biome_scanner found")
 local scanner = component.proxy(address)
 ```
 
+### Dynamic method invocation on OpenComputers-GTNH
+
+Calling a known callback through its proxy remains supported:
+
+```lua
+local status, code, message = scanner.getStatus()
+```
+
+However, OpenComputers `1.12.44-GTNH` exposes proxy callbacks dynamically.
+Consequently, `type(proxy[methodName]) == "function"` is not a reliable way to
+test whether a callback exists: it can report `false` even when the callback is
+available and callable.
+
+Programs that store method names in variables, such as reusable GUIs and
+wrapper libraries, should invoke them by component address:
+
+```lua
+local status, code, message = component.invoke(address, "getStatus")
+```
+
+When a program must check availability before calling a dynamic method, inspect
+the component's advertised method table instead:
+
+```lua
+local methods = component.methods(address)
+
+if methods.getStatus then
+  local status, code, message = component.invoke(address, "getStatus")
+end
+```
+
+This only affects dynamic discovery and dispatch. It does not change any
+callback name, argument, return value, or soft-error convention documented
+below.
+
 You can list all connected AdvancedRocketry components with:
 
 ```lua

@@ -228,3 +228,141 @@ computer is rejected atomically. Switching pages, editing or applying a
 destination, losing the component, readiness changes, or allowing the
 eight-second timer to expire automatically cancels an armed request. Failed
 destination and warp operations do not consume warp fuel.
+
+## Atmosphere Detector GUI
+
+`atmosphere_detector.lua` is a standalone OpenOS application for the
+`atmosphere_detector`. It follows the same visual style as the other examples
+and provides two touch-friendly pages:
+
+- `Surroundings` shows the target atmosphere, cached detection output,
+  redstone input, and the atmosphere ID, breathability, and combustion state
+  on all six ForgeDirection sides.
+- `Target` displays every registered atmosphere ID in a dynamically paginated
+  list. The current target is marked with `*`; selecting an entry creates a
+  local draft until `APPLY` is pressed.
+
+The application uses `getStatus()` for its normal one-second refresh. If that
+combined getter is unavailable, it reconstructs the display from
+`getTargetAtmosphere()`, `isDetected()`, and six `getAtmosphere(side)` calls.
+
+### Requirements
+
+- An OpenOS computer with a GPU and screen capable of at least `50x16`.
+- An Atmosphere Detector connected directly to the same OC cable network.
+  An Adapter is not required.
+- If multiple detectors are connected, the first address returned by
+  OpenComputers is used.
+
+### Install and run
+
+Copy `atmosphere_detector.lua` to `/home/atmosphere_detector.lua`, then run:
+
+```sh
+lua /home/atmosphere_detector.lua
+```
+
+### Controls
+
+- Touch the two tabs or press `1` and `2` to change pages.
+- On Target, touch an atmosphere row or use Up/Down (also `W`/`S`) to move.
+- Use Page Up/Page Down to change pages and Home/End to jump to the list ends.
+- Touch `APPLY` or press Enter to set the selected target.
+- Press `X` to discard the local selection and return to the detector target.
+- Press `R` to reconnect and reload the registered atmosphere list.
+- Press `Q` to quit. OpenOS interrupt also exits and restores the display.
+
+## Holographic Planet Selector GUI
+
+`planet_selector.lua` is a standalone OpenOS application for the
+`planet_selector`, divided into three pages:
+
+- `Overview` shows station state, current orbit, committed destination,
+  resolved target names and kinds, hologram enable state, and scale.
+- `Target` provides direct target-ID entry, `-100/-10/-1/+1/+10/+100`
+  adjustments, authoritative `getTargetInfo(id)` preview, and explicit target
+  selection.
+- `Scale` adjusts the hologram multiplier from `0.8x` through `10.8x` in
+  `0.1x` steps.
+
+The target page intentionally does not invent a planet list because the
+component API exposes target lookup rather than enumeration. Unknown or
+undiscovered targets are shown in the preview and rejected before selection.
+Selecting a destination does not start a warp. The application listens for
+`planet_selected` and still polls `getStatus()` as the authoritative recovery
+path. If `getStatus()` is unavailable, it falls back to the individual
+selector getters.
+
+### Requirements
+
+- An OpenOS computer with a GPU and screen capable of at least `50x16`.
+- A Holographic Planet Selector connected directly to the OC cable network.
+- The selector must be placed on a valid AdvancedRocketry space station.
+- Destination IDs must identify targets discovered by the station.
+
+### Install and run
+
+Copy `planet_selector.lua` to `/home/planet_selector.lua`, then run:
+
+```sh
+lua /home/planet_selector.lua
+```
+
+### Controls
+
+- Touch the three tabs or press `1`, `2`, and `3` to change pages.
+- On Target, touch `EDIT ID` or press `E`; Enter saves the draft and Escape
+  cancels editing.
+- Touch `SELECT`, press `A`, or press Enter on a valid dirty draft to call
+  `selectTarget(id)`.
+- On Scale, use the adjustment buttons and press `APPLY SCALE` or `A`.
+- Press `S` on Target or Scale to discard that page's local draft.
+- Press `R` to reconnect, and `Q` to quit.
+
+## Orbital Laser Drill GUI
+
+`laser_drill.lua` is a standalone OpenOS application for the `mining_laser`,
+divided into three pages:
+
+- `Status` shows the complete readiness reason, current coordinates and mode,
+  structure, lens, energy, redstone, visibility, run, completion, and jam
+  state. It can request the machine's normal unjam operation.
+- `Target` edits X/Z coordinates atomically, with direct numeric entry and
+  `-1000/-100/-1/+1/+100/+1000` adjustments for the active axis.
+- `Mode` selects `single`, `line_x`, `line_z`, or `spiral` while the laser is
+  idle.
+
+Start and stop remain controlled by the multiblock's redstone input. The
+program deliberately has no Start/Stop button and cannot bypass that gameplay
+boundary. Coordinates changed during an active operation apply to the next
+activation; mode changes remain disabled while running. If `getStatus()` is
+unavailable, a reduced snapshot is reconstructed from the individual getters.
+
+### Requirements
+
+- An OpenOS computer with a GPU and screen capable of at least `50x16`.
+- A complete Orbital Laser Drill connected directly to the OC cable network.
+- The multiblock still needs a lens, energy, output space, a valid target, and
+  the appropriate redstone state according to normal gameplay rules.
+
+### Install and run
+
+Copy `laser_drill.lua` to `/home/laser_drill.lua`, then run:
+
+```sh
+lua /home/laser_drill.lua
+```
+
+### Controls
+
+- Touch the three tabs or press `1`, `2`, and `3` to change pages.
+- On Status, touch `UNJAM OUTPUT` or press `U` to request jam recovery.
+- On Target, press `X` or `Z` to choose an axis, `E` to edit it, and Enter to
+  save the local draft. Use Left/Right for one-block adjustments.
+- Touch `APPLY TARGET`, press `A`, or press Enter to commit both coordinates.
+- On Mode, touch a mode or use the arrow keys, then press `APPLY MODE` or `A`.
+- Press `S` on Target or Mode to discard that page's local draft.
+- Press `R` to reconnect, and `Q` to quit.
+
+All three applications temporarily use up to an `80x25` resolution and restore
+the previous resolution and colors when they exit.

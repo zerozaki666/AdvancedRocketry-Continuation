@@ -64,6 +64,15 @@
 程序盘文件布局、可选依赖隔离与验收矩阵见
 [`OPENCOMPUTERS_ADVROCKET_SUITE_SPEC.md`](OPENCOMPUTERS_ADVROCKET_SUITE_SPEC.md)。
 
+### Galacticraft 气密门动态隔离
+
+- 动态放置方块现在统一通过 AR 的完整气密规则判断是否切断已有氧气 Blob，不再仅以
+  完整碰撞箱作为依据。
+- 配置在 `sealableblockwhitelist` 中的非完整方块（包括 Galacticraft
+  `tile.airLockSeal`）会在气闸逐格关闭时正确参与动态隔离；最后一个门洞方块闭合后，
+  氧气口一侧与双门气闸另一侧会立即从同一 Blob 中分离。
+- 普通非完整方块仍保持可透气，`sealableblockblacklist` 也继续优先生效。
+
 ## 安装与使用
 
 1. 客户端与服务器同时替换为 `1.4.3-continuation` JAR。
@@ -88,6 +97,7 @@
 ## 验证范围
 
 - Java 单元测试覆盖 Warp 当前目标信息与程序盘配方的数据安全边界。
+- 气密回归测试覆盖双门气闸多格逐步关闭，并验证只有最后一格闭合时才切断门外 Blob。
 - Lua 验证覆盖主界面最低/最高分辨率、组件缺失、旧 callback、跃迁状态、七个
   子程序返回路径，以及更新器的来源、路径、staging、提交和回滚流程。
 - Gradle 构建会断言 universal/deobf JAR 均包含完整程序盘资源，且不包含

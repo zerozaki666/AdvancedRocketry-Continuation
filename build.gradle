@@ -122,6 +122,15 @@ def advRocketAppFiles = [
         'planet_selector.lua',
         'laser_drill.lua'
 ]
+def advRocketDiskRoot = 'assets/advancedrocketry/loot/advrocket/'
+def advRocketRequiredDirectories = [
+        advRocketDiskRoot,
+        advRocketDiskRoot + 'usr/',
+        advRocketDiskRoot + 'usr/bin/',
+        advRocketDiskRoot + 'usr/lib/',
+        advRocketDiskRoot + 'usr/lib/advrocket/',
+        advRocketDiskRoot + 'usr/lib/advrocket/apps/'
+]
 
 processResources {
     inputs.property 'version', project.version
@@ -164,17 +173,149 @@ task deobfJar(type: Jar) {
 
 tasks.build.dependsOn deobfJar
 
-task verifyAdvRocketPackage {
-    dependsOn jar, deobfJar
+/*
+ * ForgeGradle 1.2's reobfuscator rewrites the universal JAR and drops ZIP
+ * directory entries. OpenComputers 1.12.44 resolves FileSystem.fromClass()
+ * roots with ZipFile.getEntry(), then builds its directory tree exclusively
+ * from explicit directory entries. Restore those entries after reobf so the
+ * AdvRocket program disk can actually be mounted in-game.
+ */
+def restoreAdvRocketDirectoryEntries = { File archive ->
+    if (!archive.isFile())
+        throw new GradleException(
+                "Expected archive was not created: ${archive}")
+
+    def presentDirectories = [] as Set
+    def scan = new java.util.zip.ZipFile(archive)
+    try {
+        def entries = scan.entries()
+        while (entries.hasMoreElements()) {
+            def entry = entries.nextElement()
+            if (entry.directory)
+                presentDirectories.add(entry.name)
+        }
+    }
+    finally {
+        scan.close()
+    }
+
+    def missingDirectories = advRocketRequiredDirectories.findAll {
+        !presentDirectories.contains(it)
+    }
+    if (missingDirectories.isEmpty())
+        return
+
+    def temporaryArchive = new File(archive.parentFile,
+            archive.name + '.advrocket-directory-fix.tmp')
+    java.nio.file.Files.deleteIfExists(temporaryArchive.toPath())
+    def replacementReady = false
+    try {
+        def source = new java.util.zip.ZipFile(archive)
+        try {
+            def output = new java.util.zip.ZipOutputStream(
+                    new BufferedOutputStream(
+                            new FileOutputStream(temporaryArchive)))
+            try {
+                if (source.comment != null)
+                    output.setComment(source.comment)
+
+                def copiedNames = [] as Set
+                def entries = source.entries()
+                byte[] buffer = new byte[8192]
+                while (entries.hasMoreElements()) {
+                    def entry = entries.nextElement()
+                    if (!copiedNames.add(entry.name))
+                        throw new GradleException(
+                                "${archive.name} contains duplicate ZIP entry " +
+                                        entry.name)
+
+                    def copy = new java.util.zip.ZipEntry(entry.name)
+                    if (entry.time >= 0L)
+                        copy.setTime(entry.time)
+                    if (entry.comment != null)
+                        copy.setComment(entry.comment)
+                    if (entry.method == java.util.zip.ZipEntry.STORED) {
+                        copy.setMethod(java.util.zip.ZipEntry.STORED)
+                        copy.setSize(entry.size)
+                        copy.setCompressedSize(entry.compressedSize)
+                        copy.setCrc(entry.crc)
+                    }
+                    else {
+                        copy.setMethod(java.util.zip.ZipEntry.DEFLATED)
+                    }
+
+                    output.putNextEntry(copy)
+                    if (!entry.directory) {
+                        def input = source.getInputStream(entry)
+                        try {
+                            int count
+                            while ((count = input.read(buffer)) != -1)
+                                output.write(buffer, 0, count)
+                        }
+                        finally {
+                            input.close()
+                        }
+                    }
+                    output.closeEntry()
+                }
+
+                missingDirectories.each { directory ->
+                    def entry = new java.util.zip.ZipEntry(directory)
+                    entry.setMethod(java.util.zip.ZipEntry.STORED)
+                    entry.setSize(0L)
+                    entry.setCompressedSize(0L)
+                    entry.setCrc(0L)
+                    output.putNextEntry(entry)
+                    output.closeEntry()
+                }
+            }
+            finally {
+                output.close()
+            }
+        }
+        finally {
+            source.close()
+        }
+
+        try {
+            java.nio.file.Files.move(temporaryArchive.toPath(),
+                    archive.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        }
+        catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+            java.nio.file.Files.move(temporaryArchive.toPath(),
+                    archive.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+        replacementReady = true
+    }
+    finally {
+        if (!replacementReady)
+            java.nio.file.Files.deleteIfExists(temporaryArchive.toPath())
+    }
+}
+
+task ensureAdvRocketPackageDirectories {
+    dependsOn 'reobf', deobfJar
     doLast {
-        def root = 'assets/advancedrocketry/loot/advrocket/'
+        [tasks.jar.archiveFile.get().asFile,
+                tasks.deobfJar.archiveFile.get().asFile].each {
+            restoreAdvRocketDirectoryEntries(it)
+        }
+    }
+}
+
+task verifyAdvRocketPackage {
+    dependsOn ensureAdvRocketPackageDirectories
+    doLast {
         def requiredEntries = [
-                root + '.prop',
-                root + 'usr/bin/advrocket.lua',
-                root + 'usr/bin/update.lua',
-                root + 'usr/lib/advrocket/manifest.lua'
+                advRocketDiskRoot + '.prop',
+                advRocketDiskRoot + 'usr/bin/advrocket.lua',
+                advRocketDiskRoot + 'usr/bin/update.lua',
+                advRocketDiskRoot + 'usr/lib/advrocket/manifest.lua'
         ] + advRocketAppFiles.collect {
-            root + 'usr/lib/advrocket/apps/' + it
+            advRocketDiskRoot + 'usr/lib/advrocket/apps/' + it
         }
         [tasks.jar.archiveFile.get().asFile,
                 tasks.deobfJar.archiveFile.get().asFile].each { archive ->
@@ -184,11 +325,19 @@ task verifyAdvRocketPackage {
             def zip = new java.util.zip.ZipFile(archive)
             try {
                 def fileEntries = [] as Set
+                def directoryEntries = [] as Set
                 def entries = zip.entries()
                 while (entries.hasMoreElements()) {
                     def entry = entries.nextElement()
-                    if (!entry.directory)
+                    if (entry.directory)
+                        directoryEntries.add(entry.name)
+                    else
                         fileEntries.add(entry.name)
+                }
+                advRocketRequiredDirectories.each { entry ->
+                    if (!directoryEntries.contains(entry))
+                        throw new GradleException(
+                                "${archive.name} is missing ZIP directory ${entry}")
                 }
                 requiredEntries.each { entry ->
                     if (!fileEntries.contains(entry))
@@ -196,7 +345,8 @@ task verifyAdvRocketPackage {
                                 "${archive.name} is missing ${entry}")
                 }
                 def unexpected = fileEntries.findAll {
-                    it.startsWith(root) && !requiredEntries.contains(it)
+                    it.startsWith(advRocketDiskRoot) &&
+                            !requiredEntries.contains(it)
                 }
                 if (!unexpected.isEmpty())
                     throw new GradleException(

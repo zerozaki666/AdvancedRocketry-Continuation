@@ -48,6 +48,9 @@
   误吞不可恢复的数据盘。
 - 插盘后执行 `install AdvRocket` 安装完整套件；更换新版 AR JAR 后可插入同一张
   实体软盘执行 `update`，从新 JAR 的只读资源离线覆盖 managed files。
+- universal JAR 会在 ForgeGradle reobfuscation 后恢复 OpenComputers ZIP 文件系统
+  所需的显式目录条目，并在构建时逐级验证；修复程序盘可合成但插入后无法挂载、
+  `install AdvRocket` 报 `Nothing to install labeled: AdvRocket` 的问题。
 - 更新器校验 package ID、manifest format、只读 source、唯一来源、路径边界与
   symbolic link；先完整 staging，最后替换 manifest，提交失败时恢复旧文件。
 

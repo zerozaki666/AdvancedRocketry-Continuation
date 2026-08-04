@@ -161,3 +161,70 @@ fuel checks. `Launch request submitted` means the request reached the rocket;
 it does not claim that liftoff succeeded. Switching pages, losing the component,
 changing link state, or allowing the eight-second timer to expire automatically
 cancels an armed request.
+
+## Warp Controller GUI
+
+`warp_controller.lua` is a standalone OpenOS application for the
+`warp_controller`. It follows the same visual style as the Station Controller,
+Biome Scanner, and Rocket Monitoring Station applications, and divides station
+warp management into two touch-friendly pages:
+
+- `Overview` shows station and target IDs, readiness, travel cost, warp fuel,
+  Warp Core and artifact checks, plus the live transition countdown.
+- `Destination` provides a local numeric target draft, touch controls for
+  `-100`, `-10`, `-1`, `+1`, `+10`, and `+100`, direct keyboard entry, and
+  explicit Apply/Sync actions.
+
+The application listens for `warp_started` and `warp_finished` signals for
+immediate feedback, while continuing to poll `getStatus()` once per second as
+the authoritative recovery path. Callback invocation is performed by component
+address for compatibility with GTNH OpenComputers dynamic proxies. If
+`getStatus()` is unavailable, the GUI reconstructs a reduced snapshot from the
+individual Warp Controller getters.
+
+### Requirements
+
+- An OpenOS computer with a GPU and screen capable of at least `50x16`.
+- A Warp Controller connected directly to the same OC cable network. An Adapter
+  is not required.
+- The controller must be placed on a valid AdvancedRocketry space station.
+- Destination IDs must identify targets already discovered by the station.
+- If multiple Warp Controllers are connected, the first address returned by
+  OpenComputers is used.
+
+### Install and run
+
+Copy `warp_controller.lua` to the OpenOS computer as
+`/home/warp_controller.lua`, then run:
+
+```sh
+lua /home/warp_controller.lua
+```
+
+The application temporarily uses up to an `80x25` resolution and restores the
+previous resolution and colors when it exits.
+
+### Controls
+
+- Touch the two tabs or press `1` and `2` to change pages.
+- On Destination, touch `EDIT ID` or press `E` to enter a target ID. Press Enter
+  to save it as a local draft or Escape to cancel the edit.
+- Touch the increment buttons to adjust the local draft.
+- Touch `APPLY`, press `A`, or press Enter on a dirty draft to call
+  `setDestination(id)`.
+- Touch `SYNC` or press `S` to discard the local draft and reload the committed
+  destination.
+- On Overview, touch `ARM WARP` or press `W` to arm a warp request. Confirm
+  within eight seconds by touching `CONFIRM WARP`, pressing Enter, or pressing
+  `W` again.
+- Touch `CANCEL`, press `C`, or press Escape to cancel confirmation.
+- Press `R` to reconnect to the first Warp Controller on the cable network.
+- Press `Q` to quit. OpenOS interrupt also exits and restores the display.
+
+Before confirmation the application refreshes the authoritative snapshot and
+checks the station ID, destination, warp state, and readiness again. It then
+calls `warp(expectedDestinationId)`, so a destination changed by another GUI or
+computer is rejected atomically. Switching pages, editing or applying a
+destination, losing the component, readiness changes, or allowing the
+eight-second timer to expire automatically cancels an armed request. Failed
+destination and warp operations do not consume warp fuel.

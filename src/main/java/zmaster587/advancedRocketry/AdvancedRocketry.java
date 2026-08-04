@@ -71,6 +71,7 @@ import zmaster587.advancedRocketry.block.BlockLaser;
 import zmaster587.advancedRocketry.block.BlockLightSource;
 import zmaster587.advancedRocketry.block.BlockLinkedHorizontalTexture;
 import zmaster587.advancedRocketry.block.BlockMiningDrill;
+import zmaster587.advancedRocketry.block.BlockOxygenDetector;
 import zmaster587.advancedRocketry.block.BlockPlanetSoil;
 import zmaster587.advancedRocketry.block.BlockPress;
 import zmaster587.advancedRocketry.block.BlockPressurizedFluidTank;
@@ -610,6 +611,7 @@ public class AdvancedRocketry {
 		AdvancedRocketryBlocks.blockAirLock = new BlockDoor2(Material.rock).setBlockName("smallAirlockDoor").setBlockTextureName("advancedRocketry:smallAirlockDoor").setHardness(3f).setResistance(8f);
 		AdvancedRocketryBlocks.blockLandingPad = new BlockLandingPad(Material.rock).setBlockName("dockingPad").setBlockTextureName("advancedRocketry:rocketPad_").setHardness(3f).setCreativeTab(tabAdvRocketry);
 		AdvancedRocketryBlocks.blockOxygenDetection = new BlockRedstoneEmitter(Material.rock,"advancedrocketry:atmosphereDetector_active").setBlockName("atmosphereDetector").setBlockTextureName("advancedRocketry:atmosphereDetector").setHardness(3f).setCreativeTab(tabAdvRocketry);
+		AdvancedRocketryBlocks.blockOxygenDetector = new BlockOxygenDetector(Material.rock,"advancedrocketry:atmosphereDetector_active").setBlockName("oxygenDetector").setBlockTextureName("advancedRocketry:atmosphereDetector").setHardness(3f).setCreativeTab(tabAdvRocketry);
 		AdvancedRocketryBlocks.blockOxygenScrubber = new BlockTile(TileCO2Scrubber.class, GuiHandler.guiId.MODULAR.ordinal()).setBlockTextureName("advancedrocketry:machineScrubber","advancedrocketry:machineScrubberActive").setCreativeTab(tabAdvRocketry).setBlockName("scrubber").setHardness(3f);
 		AdvancedRocketryBlocks.blockUnlitTorch = new BlockTorchUnlit().setHardness(0.0F).setBlockName("unlittorch").setBlockTextureName("minecraft:torch_on");
 		AdvancedRocketryBlocks.blockVitrifiedSand = new BlockGeneric(Material.sand).setBlockName("vitrifiedSand").setCreativeTab(CreativeTabs.tabBlock).setBlockTextureName("advancedrocketry:vitrifiedSand").setHardness(0.5F).setStepSound(Block.soundTypeSand);
@@ -955,6 +957,7 @@ public class AdvancedRocketry {
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockWarpCore, AdvancedRocketryBlocks.blockWarpCore.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockWarpShipMonitor, AdvancedRocketryBlocks.blockWarpShipMonitor.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenDetection, AdvancedRocketryBlocks.blockOxygenDetection.getUnlocalizedName());
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenDetector, AdvancedRocketryBlocks.blockOxygenDetector.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockUnlitTorch, AdvancedRocketryBlocks.blockUnlitTorch.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blocksGeode,AdvancedRocketryBlocks.blocksGeode.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenFluid,ItemFluid.class, AdvancedRocketryBlocks.blockOxygenFluid.getUnlocalizedName());
@@ -1168,6 +1171,7 @@ public class AdvancedRocketry {
 		GameRegistry.registerTileEntity(TileCO2Scrubber.class, "ARCO2Scrubber");
 		GameRegistry.registerTileEntity(TileWarpShipMonitor.class, "ARStationMonitor");
 		GameRegistry.registerTileEntity(TileAtmosphereDetector.class, "AROxygenDetector");
+		GameRegistry.registerTileEntity(TileOxygenDetector.class, "ARBreathableOxygenDetector");
 		GameRegistry.registerTileEntity(TileStationOrientationControl.class, "AROrientationControl");
 		GameRegistry.registerTileEntity(TileStationGravityController.class, "ARGravityControl");
 		GameRegistry.registerTileEntity(TileDataPipe.class, "ARDataPipe");
@@ -1366,6 +1370,7 @@ public class AdvancedRocketry {
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockChemicalReactor), "pip", "abd", "rcr", 'a', itemIOBoard, 'd', controlCircuitBoard, 'r', basicCircuit, 'p', "plateGold", 'i', userInterface, 'c', liquidIOBoard, 'b', LibVulpesBlocks.blockStructureBlock, 'g', "plateGold"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockWarpCore), "gcg", "pbp", "gcg", 'p', "plateSteel", 'c', advancedCircuit, 'b', "coilCopper", 'g', "plateTitanium"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenDetection), "pip", "gbf", "pcp", 'p', "plateSteel",'f', "fanSteel", 'i', userInterface, 'c', basicCircuit, 'b', LibVulpesBlocks.blockStructureBlock, 'g', Blocks.iron_bars));
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenDetector), "gig", "rbr", "pcp", 'g', Blocks.iron_bars, 'i', userInterface, 'r', Items.repeater, 'b', LibVulpesBlocks.blockStructureBlock, 'p', "plateSteel", 'c', basicCircuit));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockWarpShipMonitor), "pip", "obo", "pcp", 'o', controlCircuitBoard, 'p', "plateSteel", 'i', userInterface, 'c', advancedCircuit, 'b', LibVulpesBlocks.blockStructureBlock));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockBiomeScanner), "plp", "bsb","ppp", 'p', "plateTin", 'l', biomeChanger, 'b', smallBattery, 's', LibVulpesBlocks.blockStructureBlock));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockDeployableRocketBuilder), "gdg", "dad", "rdr", 'g', "gearTitaniumAluminide", 'd', "dustDilithium", 'r', "stickTitaniumAluminide", 'a', AdvancedRocketryBlocks.blockRocketBuilder));

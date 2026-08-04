@@ -73,6 +73,18 @@
   氧气口一侧与双门气闸另一侧会立即从同一 Blob 中分离。
 - 普通非完整方块仍保持可透气，`sealableblockblacklist` 也继续优先生效。
 
+### 双门气闸 Oxygen Detector
+
+- 新增无需供电的 `Oxygen Detector` 方块。它读取相邻六格的实际 AR 大气状态，只把
+  未被气密方块遮挡的面纳入红石判断。
+- GUI 只有一个开关，默认关闭：关闭时任一暴露面可呼吸即输出红石；开启时至少需要
+  一个暴露面，并且所有暴露面均可呼吸才输出红石。六面全部被遮挡时不会误输出。
+- 遮挡判定复用 `SealableBlockHandler`，因此完整玻璃、AR 气密门、配置白名单及 GC
+  `tile.airLockSeal` 会被排除，未封死空气的火把、线缆等非气密方块不会制造假盲区。
+- 安装 OpenComputers 时方块提供原生 `oxygen_detector` component，可分别读取 down、
+  up、north、south、west、east 六面的 `exposed` 与 `breathable` 状态，也可读取或设置
+  `any` / `all` 聚合模式。OpenComputers 未安装时方块、GUI 和红石逻辑保持完整可用。
+
 ## 安装与使用
 
 1. 客户端与服务器同时替换为 `1.4.3-continuation` JAR。

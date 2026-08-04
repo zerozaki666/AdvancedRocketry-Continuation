@@ -22,6 +22,9 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
   `advrocket` 统一主界面。安装 OpenComputers 时可合成原生 AdvRocket 程序软盘，
   使用 `install AdvRocket` 安装，并通过离线 `update` 从新版 JAR 安全覆盖套件；
   未安装 OpenComputers 时不注册软盘或配方，AdvancedRocketry 仍可独立启动。
+- 新增无需供电的 Oxygen Detector，用于双门气闸联锁。它会忽略被气密方块遮挡的
+  面，并以“任一暴露面”或“全部暴露面”可呼吸为条件输出红石；安装
+  OpenComputers 时还可读取东南西北上下六面的独立检测结果。
 
 - FTL Warp Core 通过 OreDictionary 消耗 `gemDilithium` 或
   `crystalDilithium`，并按 `pointsPerDilithium` 配置正确计算燃料点。

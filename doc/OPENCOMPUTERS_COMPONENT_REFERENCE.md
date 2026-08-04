@@ -62,6 +62,7 @@ for address, name in component.list() do
       or name == "orientation_controller"
       or name == "gravity_controller"
       or name == "atmosphere_detector"
+      or name == "oxygen_detector"
       or name == "biome_scanner"
       or name == "planet_selector"
       or name == "warp_controller"
@@ -116,7 +117,7 @@ print("Applied gravity multiplier:", valueOrCode)
 | `incomplete_multiblock` | The required multiblock structure is incomplete. |
 | `obstructed` | The Biome Scanner observation path is blocked. |
 | `no_surface` | The current target has no biome surface, for example a gas giant or black hole. |
-| `invalid_side` | An Atmosphere Detector side is outside `0..5`. |
+| `invalid_side` | An Atmosphere Detector or Oxygen Detector side is outside `0..5`. |
 | `unknown_atmosphere` | The requested atmosphere ID is not registered. |
 | `no_usable_warp_core` | The station has no usable Warp Core. |
 | `invalid_travel_cost` | No finite positive warp cost can be calculated. |
@@ -424,6 +425,111 @@ adjacent atmospheres:
       breathable = true,
       allowsCombustion = true
     },
+    up = { ... },
+    north = { ... },
+    south = { ... },
+    west = { ... },
+    east = { ... }
+  }
+}
+```
+
+# oxygen_detector
+
+## Info
+
+Component name: `oxygen_detector`
+
+The Oxygen Detector is a zero-power airlock interlock sensor. It samples the
+six adjacent block cells and reports only whether each side is exposed and
+breathable. It deliberately does not expose the Atmosphere Detector's full
+atmosphere selection API.
+
+Side numbers use Minecraft 1.7.10 `ForgeDirection` ordering:
+
+| Side | Direction |
+|---:|---|
+| `0` | down |
+| `1` | up |
+| `2` | north |
+| `3` | south |
+| `4` | west |
+| `5` | east |
+
+A side is exposed when its adjacent block cell is not sealed under
+AdvancedRocketry's normal `SealableBlockHandler` rules. A blocked side reports
+`exposed = false` and `breathable = false` and is excluded from both redstone
+aggregation modes.
+
+The default `any` mode emits redstone when at least one exposed side is
+breathable. The `all` mode emits only when at least one side is exposed and
+every exposed side is breathable. A detector with all six sides blocked never
+emits redstone.
+
+## Methods
+
+### `getSideStatus(side)`
+
+Returns one side entry:
+
+```lua
+{
+  direction = "south",
+  exposed = true,
+  breathable = false
+}
+```
+
+- `side`: integer from `0` through `5`.
+- Returns `invalid_side` when the side is outside the valid range.
+
+### `getSides()`
+
+Returns all six readings keyed by direction:
+
+```lua
+local sides = component.oxygen_detector.getSides()
+
+if sides.south.exposed and sides.south.breathable then
+  print("South side is pressurized")
+end
+```
+
+The returned keys are `down`, `up`, `north`, `south`, `west`, and `east`.
+
+### `isSideBreathable(side)`
+
+Returns a boolean for one side. A blocked side always returns `false`; use
+`getSideStatus(side)` when the program needs to distinguish obstruction from
+an exposed vacuum.
+
+### `getDetectionMode()`
+
+Returns `"any"` or `"all"`.
+
+### `setDetectionMode(mode)`
+
+Sets the same aggregation mode as the in-game switch.
+
+- `mode`: exact string `"any"` or `"all"`, case-insensitive.
+- Returns `true, effectiveMode`.
+- Returns `invalid_mode` for any other value.
+
+### `isDetected()`
+
+Returns whether the block is currently emitting redstone.
+
+### `getStatus()`
+
+Returns the current mode, cached redstone output, and all six live side
+readings:
+
+```lua
+{
+  mode = "all",
+  detected = true,
+  sides = {
+    down = { direction = "down", exposed = false, breathable = false },
     up = { ... },
     north = { ... },
     south = { ... },

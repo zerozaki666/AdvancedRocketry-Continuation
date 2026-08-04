@@ -98,3 +98,66 @@ previous resolution and colors when it exits.
 - Press `R` to reconnect to the first Biome Scanner on the cable network and
   scan it.
 - Press `Q` to quit. OpenOS interrupt also exits and restores the display.
+
+## Rocket Monitoring Station GUI
+
+`rocket_monitor.lua` is a standalone OpenOS application for the
+`monitoring_station`. It uses the same visual style and colors as the Station
+Controller and Biome Scanner applications, and divides the Monitoring Station's
+telemetry into four touch-friendly pages:
+
+- `Overview` shows the current link state, key rocket or mission values, and
+  the safe launch request control.
+- `Rocket` shows the complete live rocket snapshot, including height,
+  velocity, thrust, weight, acceleration, drilling power, seat, and entity
+  state.
+- `Fuel` shows liquid, nuclear, ion, warp, and impulse fuel amount, capacity,
+  fill, rate, and estimated endurance.
+- `Mission` shows the mission id, origin dimension, progress, remaining time,
+  and orbit-height estimate.
+
+The application recognizes offline, idle, rocket, mission, and transition
+states. It polls only the active page's detailed telemetry and keeps running
+when a callback returns an AdvancedRocketry soft error. Callback invocation is
+performed by component address for compatibility with GTNH OpenComputers
+dynamic proxies.
+
+### Requirements
+
+- An OpenOS computer with a GPU and screen capable of at least `50x16`.
+- A Rocket Monitoring Station connected directly to the same OC cable network.
+  An Adapter is not required.
+- The Monitoring Station must be linked to a built rocket to display live
+  Rocket and Fuel telemetry. Mission telemetry appears after the linked rocket
+  transitions into an AdvancedRocketry mission.
+- If multiple Monitoring Stations are connected, the first address returned by
+  OpenComputers is used.
+
+### Install and run
+
+Copy `rocket_monitor.lua` to the OpenOS computer as
+`/home/rocket_monitor.lua`, then run:
+
+```sh
+lua /home/rocket_monitor.lua
+```
+
+The application temporarily uses up to an `80x25` resolution and restores the
+previous resolution and colors when it exits.
+
+### Controls
+
+- Touch the four tabs or press `1` through `4` to change pages.
+- Press `R` to reconnect to the first Monitoring Station on the cable network.
+- On Overview, touch `ARM LAUNCH` or press `L` to arm a launch request.
+- Confirm within eight seconds by touching `CONFIRM LAUNCH`, pressing Enter,
+  or pressing `L` again.
+- Touch `CANCEL`, press `C`, or press Escape to cancel confirmation.
+- Press `Q` to quit. OpenOS interrupt also exits and restores the display.
+
+The launch control calls only `prepareLaunch()`. It uses AdvancedRocketry's
+normal pre-launch path and does not bypass events, destination validation, or
+fuel checks. `Launch request submitted` means the request reached the rocket;
+it does not claim that liftoff succeeded. Switching pages, losing the component,
+changing link state, or allowing the eight-second timer to expire automatically
+cancels an armed request.

@@ -216,11 +216,12 @@ cancels an armed request.
 Biome Scanner, and Rocket Monitoring Station applications, and divides station
 warp management into two touch-friendly pages:
 
-- `Overview` shows station and target IDs, readiness, travel cost, warp fuel,
-  Warp Core and artifact checks, plus the live transition countdown.
+- `Overview` shows the resolved names, kinds and IDs of the current orbit and
+  committed destination, readiness, travel cost, warp fuel, Warp Core and
+  artifact checks, plus the live transition countdown.
 - `Destination` provides a local numeric target draft, touch controls for
   `-100`, `-10`, `-1`, `+1`, `+10`, and `+100`, direct keyboard entry, and
-  explicit Apply/Sync actions.
+  an authoritative name/kind preview plus explicit Apply/Sync actions.
 
 The application listens for `warp_started` and `warp_finished` signals for
 immediate feedback, while continuing to poll `getStatus()` once per second as
@@ -257,6 +258,8 @@ previous resolution and colors when it exits.
 - On Destination, touch `EDIT ID` or press `E` to enter a target ID. Press Enter
   to save it as a local draft or Escape to cancel the edit.
 - Touch the increment buttons to adjust the local draft.
+- The target name preview refreshes whenever a numeric draft is saved or
+  adjusted. Invalid IDs remain visibly unresolved.
 - Touch `APPLY`, press `A`, or press Enter on a dirty draft to call
   `setDestination(id)`.
 - Touch `SYNC` or press `S` to discard the local draft and reload the committed
@@ -289,6 +292,11 @@ and provides two touch-friendly pages:
   list. The current target is marked with `*`; selecting an entry creates a
   local draft until `APPLY` is pressed.
 
+The application enumerates every `atmosphere_detector` on the cable network,
+sorts them by component address, and exposes previous/next device controls on
+every page. Changing devices discards the old detector's local atmosphere
+selection before loading the newly selected detector's status and target list.
+
 The application uses `getStatus()` for its normal one-second refresh. If that
 combined getter is unavailable, it reconstructs the display from
 `getTargetAtmosphere()`, `isDetected()`, and six `getAtmosphere(side)` calls.
@@ -298,8 +306,8 @@ combined getter is unavailable, it reconstructs the display from
 - An OpenOS computer with a GPU and screen capable of at least `50x16`.
 - An Atmosphere Detector connected directly to the same OC cable network.
   An Adapter is not required.
-- If multiple detectors are connected, the first address returned by
-  OpenComputers is used.
+- One or more Atmosphere Detectors may be connected; the GUI shows the selected
+  device index and short component address.
 
 ### Install and run
 
@@ -312,11 +320,14 @@ lua /home/atmosphere_detector.lua
 ### Controls
 
 - Touch the two tabs or press `1` and `2` to change pages.
+- Touch `< DEVICE` / `DEVICE >`, or press `[` / `]`, to cycle through connected
+  Atmosphere Detectors.
 - On Target, touch an atmosphere row or use Up/Down (also `W`/`S`) to move.
 - Use Page Up/Page Down to change pages and Home/End to jump to the list ends.
 - Touch `APPLY` or press Enter to set the selected target.
 - Press `X` to discard the local selection and return to the detector target.
-- Press `R` to reconnect and reload the registered atmosphere list.
+- Press `R` to rescan the network while preserving the selected address when it
+  is still connected, and reload the selected detector's atmosphere list.
 - Press `Q` to quit. OpenOS interrupt also exits and restores the display.
 
 ## Holographic Planet Selector GUI

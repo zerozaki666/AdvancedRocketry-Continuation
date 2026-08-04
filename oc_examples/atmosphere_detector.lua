@@ -6,7 +6,7 @@ local computer = require("computer")
 local event = require("event")
 
 local APP_NAME = "Advanced Rocketry Atmosphere Detector"
-local APP_VERSION = "1.0.0"
+local APP_VERSION = "1.1.0"
 local REFRESH_SECONDS = 1
 
 local colors = {
@@ -40,6 +40,8 @@ local directions = {
 }
 
 local selectedTab = 1
+local detectorAddresses = {}
+local selectedDetectorIndex = 0
 local snapshot = nil
 local snapshotStale = false
 local atmosphereIds = {}
@@ -144,7 +146,7 @@ local function isMissingMethod(code, message)
     or string.find(combined, "not available", 1, true) ~= nil
 end
 
-local function disconnectDetector(message)
+local function clearDetectorState(message)
   detector.address = nil
   detector.proxy = nil
   detector.error = message
@@ -154,6 +156,12 @@ local function disconnectDetector(message)
   selectedAtmosphereIndex = 1
   selectionDirty = false
   targetPage = 1
+end
+
+local function disconnectDetector(message)
+  clearDetectorState(message)
+  detectorAddresses = {}
+  selectedDetectorIndex = 0
 end
 
 local function handleCallError(code, message)
@@ -212,25 +220,62 @@ local function invokeMutator(method, ...)
   return true, valueOrCode, message
 end
 
-local function findDetector()
-  local ok, addressOrError = pcall(function()
-    local iterator = component.list(detector.componentName, true)
-    return iterator()
-  end)
-  if not ok or not addressOrError then
-    disconnectDetector(ok and "not connected" or tostring(addressOrError))
+local function connectDetector(index)
+  clearDetectorState(nil)
+  if #detectorAddresses == 0 then
+    detector.error = "not connected"
     return false
   end
 
-  local proxyOk, proxyOrError = pcall(component.proxy, addressOrError)
+  selectedDetectorIndex = math.max(1, math.min(#detectorAddresses,
+    tonumber(index) or 1))
+  local address = detectorAddresses[selectedDetectorIndex]
+  local proxyOk, proxyOrError = pcall(component.proxy, address)
   if not proxyOk then
-    disconnectDetector(tostring(proxyOrError))
+    detector.address = address
+    detector.error = tostring(proxyOrError)
     return false
   end
-  detector.address = addressOrError
+  detector.address = address
   detector.proxy = proxyOrError
   detector.error = nil
   return true
+end
+
+local function scanDetectors(preferredAddress)
+  local previousIndex = selectedDetectorIndex
+  local ok, addressesOrError = pcall(function()
+    local addresses = {}
+    for address in component.list(detector.componentName, true) do
+      addresses[#addresses + 1] = address
+    end
+    table.sort(addresses)
+    return addresses
+  end)
+  if not ok then
+    disconnectDetector(tostring(addressesOrError))
+    return false
+  end
+
+  detectorAddresses = addressesOrError
+  if #detectorAddresses == 0 then
+    clearDetectorState("not connected")
+    selectedDetectorIndex = 0
+    return false
+  end
+
+  local selected = nil
+  if type(preferredAddress) == "string" then
+    for index, address in ipairs(detectorAddresses) do
+      if address == preferredAddress then
+        selected = index
+        break
+      end
+    end
+  end
+  selected = selected or math.max(1,
+    math.min(#detectorAddresses, previousIndex > 0 and previousIndex or 1))
+  return connectDetector(selected)
 end
 
 local function getFallbackSnapshot()
@@ -358,7 +403,8 @@ local function refreshSnapshot(showErrors)
 end
 
 local function reconnect(showMessage)
-  local found = findDetector()
+  local preferredAddress = detector.address
+  local found = scanDetectors(preferredAddress)
   if found then
     refreshSnapshot(false)
     loadAtmosphereList(false)
@@ -366,11 +412,34 @@ local function reconnect(showMessage)
   if showMessage then
     if found then
       setStatus("Atmosphere Detector connected [" ..
-        shortAddress(detector.address) .. "]", colors.good)
+        shortAddress(detector.address) .. "] (" ..
+        selectedDetectorIndex .. "/" .. #detectorAddresses .. ")",
+        colors.good)
     else
       setStatus("Atmosphere Detector not found", colors.warning, 7)
     end
   end
+end
+
+local function switchDetector(offset)
+  if #detectorAddresses < 2 then
+    setStatus(#detectorAddresses == 0 and "No Atmosphere Detector found"
+      or "Only one Atmosphere Detector is connected", colors.muted)
+    return false
+  end
+  local index = ((selectedDetectorIndex - 1 + offset) %
+    #detectorAddresses) + 1
+  if not connectDetector(index) then
+    setStatus("Detector connection failed - " ..
+      tostring(detector.error), colors.bad, 8)
+    return false
+  end
+  refreshSnapshot(false)
+  loadAtmosphereList(false)
+  setStatus("Selected Atmosphere Detector [" ..
+    shortAddress(detector.address) .. "] (" .. selectedDetectorIndex ..
+    "/" .. #detectorAddresses .. ")", colors.good)
+  return true
 end
 
 local function selectAtmosphere(index)
@@ -589,8 +658,22 @@ local function drawHeader()
     state = "STALE"
     stateColor = colors.warning
   end
-  writeCentered(2, "Detector [" .. shortAddress(detector.address) .. "]  " ..
-    state, stateColor)
+  local selectorWidth = 10
+  drawButton(1, 2, selectorWidth, "< DEVICE", #detectorAddresses > 1,
+    function() switchDetector(-1) end)
+  drawButton(width - selectorWidth + 1, 2, selectorWidth, "DEVICE >",
+    #detectorAddresses > 1, function() switchDetector(1) end)
+
+  local count = #detectorAddresses
+  local position = selectedDetectorIndex > 0 and selectedDetectorIndex or 0
+  local summary = "Detector " .. position .. "/" .. count .. " [" ..
+    shortAddress(detector.address) .. "] " .. state
+  local available = width - selectorWidth * 2
+  if #summary > available then
+    summary = string.sub(summary, 1, available)
+  end
+  local x = selectorWidth + math.floor((available - #summary) / 2) + 1
+  writeAt(x, 2, summary, stateColor, colors.background, available)
 end
 
 local function drawStatusBar()
@@ -602,9 +685,14 @@ local function drawStatusBar()
   clearLine(height - 1, colors.panel)
   writeCentered(height - 1, statusText, statusColor, colors.panel)
   clearLine(height, colors.panel)
-  local help = selectedTab == 2
-    and "[1-2] Tabs  [Arrows] Select  [Enter] Apply  [X] Sync  [Q] Quit"
-    or "[1-2] Tabs   [R] Rescan   [Q] Quit"
+  local help
+  if selectedTab == 2 and width >= 65 then
+    help = "[1-2] Tabs  [[/]] Device  [Arrows] Select  [Enter] Apply  [Q] Quit"
+  elseif selectedTab == 2 then
+    help = "[[/]] Device  [Arrows] Select  [Enter] Apply  [Q] Quit"
+  else
+    help = "[1-2] Tabs  [[/]] Device  [R] Rescan  [Q] Quit"
+  end
   writeCentered(height, help, colors.muted, colors.panel)
 end
 
@@ -637,6 +725,10 @@ end
 local function handleKey(character, code)
   if character >= string.byte("1") and character <= string.byte("2") then
     selectedTab = character - string.byte("0")
+  elseif character == string.byte("[") then
+    switchDetector(-1)
+  elseif character == string.byte("]") then
+    switchDetector(1)
   elseif character == string.byte("r") or character == string.byte("R") then
     reconnect(true)
   elseif selectedTab == 2 and (code == 200

@@ -110,9 +110,10 @@ dependencies {
             classifier: 'dev'
 }
 
+def advRocketSuiteRevision = 2
 def advRocketManifestVersion =
         "${version_major}.${version_minor}.${version_revis}${version_qualifier}" +
-        project.getBuildNumber()
+        project.getBuildNumber() + "+suite.${advRocketSuiteRevision}"
 def advRocketAppFiles = [
         'station_control.lua',
         'biome_scanner.lua',
@@ -344,6 +345,21 @@ task verifyAdvRocketPackage {
                         throw new GradleException(
                                 "${archive.name} is missing ${entry}")
                 }
+                def manifestPath = advRocketDiskRoot +
+                        'usr/lib/advrocket/manifest.lua'
+                def manifestInput = zip.getInputStream(zip.getEntry(
+                        manifestPath))
+                def manifestText
+                try {
+                    manifestText = manifestInput.getText('UTF-8')
+                }
+                finally {
+                    manifestInput.close()
+                }
+                if (!manifestText.contains(
+                        "modVersion = \"${advRocketManifestVersion}\""))
+                    throw new GradleException(
+                            "${archive.name} has the wrong AdvRocket suite revision")
                 def unexpected = fileEntries.findAll {
                     it.startsWith(advRocketDiskRoot) &&
                             !requiredEntries.contains(it)

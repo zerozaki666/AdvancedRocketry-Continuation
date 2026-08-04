@@ -1065,6 +1065,21 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		return describeCurrentTarget(station);
 	}
 
+	@Callback(doc = "function(id?:number):table -- Describes a station target; defaults to the committed destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getTargetInfo(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		int id = args.count() == 0 ? station.getDestOrbitingBody()
+				: args.checkInteger(0);
+		return describeTarget(station, id);
+	}
+
 	static Object[] describeCurrentTarget(SpaceObject station) {
 		if(station == null)
 			return OpenComputersComponentAccess.getterError(
@@ -1074,20 +1089,31 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		if(currentTargetId == SpaceObjectManager.WARPDIMID)
 			return OpenComputersComponentAccess.getterError("in_warp",
 					"Station is currently in warp.");
-		StationTarget target = StationTargetResolver.getInstance()
-				.resolve(currentTargetId);
-		if(!target.isDestination())
-			return OpenComputersComponentAccess.getterError(
-					"invalid_target",
-					"Current orbit target is invalid.");
-		Map<String, Object> info = StationDestinationService.describe(
-				station, target);
+		Object[] result = describeTarget(station, currentTargetId);
+		if(result.length == 0 || !(result[0] instanceof Map))
+			return result;
+		Map<?, ?> info = (Map<?, ?>)result[0];
 		Object name = info.get("name");
 		if(!(name instanceof String) || ((String)name).trim().isEmpty())
 			return OpenComputersComponentAccess.getterError(
 					"invalid_target",
 					"Current orbit target has no display name.");
-		return new Object[] { info };
+		return result;
+	}
+
+	static Object[] describeTarget(SpaceObject station, int targetId) {
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station",
+					"Component is not on a valid space station.");
+		StationTarget target = StationTargetResolver.getInstance()
+				.resolve(targetId);
+		if(!target.isDestination())
+			return OpenComputersComponentAccess.getterError(
+					"invalid_target",
+					"Requested id is not a valid station target.");
+		return new Object[] { StationDestinationService.describe(station,
+				target) };
 	}
 
 	@Callback(doc = "function():number -- Returns the committed station destination.")

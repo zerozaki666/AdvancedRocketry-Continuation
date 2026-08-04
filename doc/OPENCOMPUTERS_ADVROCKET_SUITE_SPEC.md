@@ -414,12 +414,13 @@ local ok, reason = shell.execute(path)
 
 ## 7. Warp Controller API 扩展
 
-### 7.1 新 callback
+### 7.1 新 callbacks
 
 新增：
 
 ```lua
 warp_controller.getCurrentTargetInfo()
+warp_controller.getTargetInfo(id)
 ```
 
 正常返回：
@@ -434,6 +435,10 @@ warp_controller.getCurrentTargetInfo()
 
 返回表可以包含现有 `StationDestinationService.describe(...)` 的附加字段，例如
 `known`、`current` 和 `destination`；主界面只依赖 `id`、`kind`、`name`。
+
+`getCurrentTargetInfo()` 始终描述当前轨道目标；`getTargetInfo(id)` 描述指定 ID，
+省略参数时描述已提交目的地。后者供 Warp Controller 子程序在数字 ID 改变时显示
+权威名称和类型，无效 ID 返回 `invalid_target`。
 
 ### 7.2 服务端实现规则
 
@@ -465,7 +470,8 @@ nil, "not_on_station", "Component is not on a valid space station."
 - 不修改 `getCurrentPlanet()` 的现有返回值；
 - 不删除或重命名任何 callback；
 - 不改变 `getStatus()` 的既有字段；
-- 现有 `warp_controller.lua` 无需依赖新 callback；
+- `warp_controller.lua` 使用新 callbacks 显示名称；旧服务端缺少 callback 时仍保留
+  数字 ID 和 soft-error fallback；
 - 更新 `doc/OPENCOMPUTERS_COMPONENT_REFERENCE.md`；
 - 为名称解析增加 dimension、black hole、warp、invalid target 测试。
 
@@ -705,7 +711,7 @@ update
 return {
   packageId = "advancedRocketry:advrocket",
   formatVersion = 1,
-  modVersion = "1.4.3-continuation",
+  modVersion = "1.4.3-continuation+suite.2",
   files = {
     "usr/bin/advrocket.lua",
     "usr/bin/update.lua",
@@ -722,8 +728,9 @@ return {
 }
 ```
 
-`modVersion` 在 Gradle `processResources` 阶段展开，不能手工复制一个容易忘记更新的
-版本号。
+`modVersion` 在 Gradle `processResources` 阶段由模组版本和独立 suite revision
+共同展开，不能手工复制一个容易忘记更新的版本号。suite revision 必须在同一模组
+版本内修改 managed Lua 文件时递增，确保已安装电脑上的 `update` 不会误判为同版本。
 
 ### 12.3 Source 发现
 

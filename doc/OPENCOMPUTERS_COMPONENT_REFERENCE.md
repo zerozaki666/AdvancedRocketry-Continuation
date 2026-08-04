@@ -710,6 +710,28 @@ never treats an unknown dimension ID as Earth. It returns `in_warp` while the
 station is transitioning and `invalid_target` when the current target cannot
 be resolved or has no display name.
 
+### `getTargetInfo(id)`
+
+Describes an arbitrary station target through the same authoritative resolver.
+The `id` argument is optional; when omitted, the method describes the committed
+warp destination.
+
+```lua
+{
+  id = 1,
+  kind = "dimension", -- or "black_hole"
+  name = "Moon",
+  known = true,
+  current = false,
+  destination = true
+}
+```
+
+This callback is intended for Warp Controller destination previews. It returns
+`invalid_target` instead of inventing a name for an unknown ID. A target may be
+described with `known = false`; the normal `setDestination(id)` validation still
+decides whether the station may select it.
+
 ### `getDestination()`
 
 Returns the committed station destination ID.

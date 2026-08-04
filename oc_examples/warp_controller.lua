@@ -6,7 +6,7 @@ local computer = require("computer")
 local event = require("event")
 
 local APP_NAME = "Advanced Rocketry Warp Control"
-local APP_VERSION = "1.0.0"
+local APP_VERSION = "1.1.0"
 local REFRESH_SECONDS = 1
 local WARP_CONFIRM_SECONDS = 8
 local MIN_TARGET_ID = -2147483648
@@ -36,6 +36,15 @@ local tabs = {"Overview", "Destination"}
 local selectedTab = 1
 local snapshot = nil
 local snapshotStale = false
+local currentInfo = nil
+local currentInfoId = nil
+local currentInfoError = nil
+local destinationInfo = nil
+local destinationInfoId = nil
+local destinationInfoError = nil
+local draftInfo = nil
+local draftInfoId = nil
+local draftInfoError = nil
 local buttons = {}
 
 local destinationDraft = nil
@@ -128,6 +137,20 @@ local function friendlyReason(reason)
   return reasonLabels[code] or code:gsub("_", " ")
 end
 
+local function targetName(info, fallbackId)
+  if type(info) == "table" then
+    return cleanText(info.name or ("Target " .. formatInteger(info.id)))
+  end
+  return "Target " .. formatInteger(fallbackId)
+end
+
+local function targetKind(info)
+  if type(info) ~= "table" then
+    return "--"
+  end
+  return cleanText(info.kind or "unknown"):gsub("_", " ")
+end
+
 local function setColors(foreground, background)
   gpu.setForeground(foreground)
   gpu.setBackground(background)
@@ -211,12 +234,25 @@ local function cancelDestinationEdit(showMessage)
   end
 end
 
+local function clearInfoCaches()
+  currentInfo = nil
+  currentInfoId = nil
+  currentInfoError = nil
+  destinationInfo = nil
+  destinationInfoId = nil
+  destinationInfoError = nil
+  draftInfo = nil
+  draftInfoId = nil
+  draftInfoError = nil
+end
+
 local function disconnectController(message)
   controller.address = nil
   controller.proxy = nil
   controller.error = message
   snapshot = nil
   snapshotStale = false
+  clearInfoCaches()
   warpInitialTicks = 0
   cancelWarp(false)
   cancelDestinationEdit(false)
@@ -380,6 +416,64 @@ local function getSnapshot()
   return getFallbackSnapshot()
 end
 
+local function readCurrentTargetInfo()
+  local ok, valueOrCode, message = invokeGetter("getCurrentTargetInfo")
+  if not ok then
+    return nil, tostring(valueOrCode) .. ": " .. tostring(message)
+  end
+  if type(valueOrCode) ~= "table" then
+    return nil, "invalid_response: current target info is not a table"
+  end
+  return valueOrCode, nil
+end
+
+local function readTargetInfo(id)
+  if type(id) ~= "number" then
+    return nil, "invalid_target"
+  end
+  local ok, valueOrCode, message = invokeGetter("getTargetInfo", id)
+  if not ok then
+    return nil, tostring(valueOrCode) .. ": " .. tostring(message)
+  end
+  if type(valueOrCode) ~= "table" then
+    return nil, "invalid_response: target info is not a table"
+  end
+  return valueOrCode, nil
+end
+
+local function refreshInfoCaches(force)
+  if not snapshot then
+    clearInfoCaches()
+    return
+  end
+
+  local currentId = snapshot.currentTargetId
+  if snapshot.inWarp then
+    currentInfo = nil
+    currentInfoId = currentId
+    currentInfoError = "in_warp"
+  elseif force or currentInfoId ~= currentId then
+    currentInfo, currentInfoError = readCurrentTargetInfo()
+    currentInfoId = currentId
+  end
+
+  local destinationId = snapshot.destinationTargetId
+  if force or destinationInfoId ~= destinationId then
+    destinationInfo, destinationInfoError = readTargetInfo(destinationId)
+    destinationInfoId = destinationId
+  end
+
+  if force or draftInfoId ~= destinationDraft then
+    draftInfo, draftInfoError = readTargetInfo(destinationDraft)
+    draftInfoId = destinationDraft
+  end
+end
+
+local function updateDraftInfo()
+  draftInfo, draftInfoError = readTargetInfo(destinationDraft)
+  draftInfoId = destinationDraft
+end
+
 local function syncDraftFromSnapshot()
   if snapshot and not destinationDirty and not destinationEditing
       and type(snapshot.destinationTargetId) == "number" then
@@ -411,7 +505,7 @@ local function validateArmedState(previous)
   end
 end
 
-local function refreshSnapshot(showErrors)
+local function refreshSnapshot(showErrors, forceInfo)
   if not controller.proxy then
     snapshot = nil
     snapshotStale = false
@@ -443,6 +537,7 @@ local function refreshSnapshot(showErrors)
   end
   validateArmedState(previous)
   syncDraftFromSnapshot()
+  refreshInfoCaches(forceInfo == true)
   return true
 end
 
@@ -451,7 +546,7 @@ local function reconnect(showMessage)
   cancelDestinationEdit(false)
   local found = findController()
   if found then
-    refreshSnapshot(false)
+    refreshSnapshot(false, true)
   end
   if showMessage then
     if found then
@@ -509,6 +604,7 @@ local function saveDestinationEdit()
   destinationEditing = false
   destinationBuffer = ""
   replaceEditOnType = false
+  updateDraftInfo()
   setStatus("Destination draft updated - press APPLY to commit",
     colors.accent)
   return true
@@ -527,6 +623,7 @@ local function setDestinationDraft(value)
   destinationDirty = not snapshot
     or destinationDraft ~= snapshot.destinationTargetId
   cancelWarp(false)
+  updateDraftInfo()
 end
 
 local function adjustDestination(amount)
@@ -540,6 +637,7 @@ local function syncDestination(showMessage)
   cancelDestinationEdit(false)
   destinationDirty = false
   destinationDraft = snapshot and snapshot.destinationTargetId or nil
+  updateDraftInfo()
   if showMessage then
     setStatus("Destination draft synchronized", colors.good)
   end
@@ -564,9 +662,11 @@ local function applyDestination()
   end
   destinationDraft = valueOrCode
   destinationDirty = false
-  refreshSnapshot(false)
-  setStatus("Destination committed: " .. formatInteger(valueOrCode),
-    colors.good)
+  refreshSnapshot(false, true)
+  local name = destinationInfo and destinationInfo.name
+    or ("Target " .. formatInteger(valueOrCode))
+  setStatus("Destination committed: " .. cleanText(name) .. " [" ..
+    formatInteger(valueOrCode) .. "]", colors.good)
 end
 
 local function armWarp()
@@ -733,11 +833,15 @@ local function drawOverview()
     colors.text)
   writeAt(math.floor(width / 2) + 1, 5, "State: " .. state,
     stateColor)
-  writeAt(2, 6, "Current: " .. formatInteger(snapshot.currentTargetId),
-    colors.text)
+  writeAt(2, 6, "Current: " ..
+    targetName(currentInfo, snapshot.currentTargetId),
+    currentInfo and colors.text or colors.warning,
+    colors.background, math.floor(width / 2) - 1)
   writeAt(math.floor(width / 2) + 1, 6,
-    "Destination: " .. formatInteger(snapshot.destinationTargetId),
-    colors.text)
+    "Destination: " ..
+      targetName(destinationInfo, snapshot.destinationTargetId),
+    destinationInfo and colors.text or colors.warning,
+    colors.background, width - math.floor(width / 2) - 1)
 
   local fuel = tonumber(snapshot.fuelAmount)
   local capacity = tonumber(snapshot.fuelCapacity)
@@ -763,6 +867,14 @@ local function drawOverview()
   else
     writeCentered(8, "Fuel capacity unavailable", colors.muted)
   end
+
+  writeAt(2, 9, "ID " .. formatInteger(snapshot.currentTargetId) ..
+    "  " .. targetKind(currentInfo), colors.muted,
+    colors.background, math.floor(width / 2) - 1)
+  writeAt(math.floor(width / 2) + 1, 9,
+    "ID " .. formatInteger(snapshot.destinationTargetId) ..
+      "  " .. targetKind(destinationInfo), colors.muted,
+    colors.background, width - math.floor(width / 2) - 1)
 
   writeAt(2, 10, "Warp Core: " .. yesNo(snapshot.hasUsableWarpCore),
     snapshot.hasUsableWarpCore == false and colors.bad or colors.text)
@@ -834,10 +946,15 @@ local function drawDestination()
     return
   end
 
-  writeAt(2, 5, "Current orbit: " ..
-    formatInteger(snapshot.currentTargetId), colors.text)
-  writeAt(math.floor(width / 2) + 1, 5, "Committed: " ..
-    formatInteger(snapshot.destinationTargetId), colors.text)
+  local half = math.floor(width / 2)
+  writeAt(2, 5, "Current: " ..
+    targetName(currentInfo, snapshot.currentTargetId),
+    currentInfo and colors.text or colors.warning,
+    colors.background, half - 1)
+  writeAt(half + 1, 5, "Committed: " ..
+    targetName(destinationInfo, snapshot.destinationTargetId),
+    destinationInfo and colors.text or colors.warning,
+    colors.background, width - half - 1)
 
   local shownDraft = destinationEditing and destinationBuffer
     or formatInteger(destinationDraft)
@@ -848,17 +965,24 @@ local function drawDestination()
     draftColor, colors.panel)
 
   if destinationEditing then
-    writeCentered(7, "Type integer ID | Enter: save draft | Esc: cancel",
+    writeCentered(7, "Finish editing the ID to resolve its target name",
       colors.accent)
-  elseif destinationDirty then
-    writeCentered(7, "Local draft differs from committed destination",
-      colors.warning)
   else
-    writeCentered(7, "Draft synchronized with Warp Controller",
-      colors.muted)
+    local previewColor = draftInfo and draftInfo.known and colors.good
+      or draftInfo and colors.warning or colors.bad
+    writeCentered(7, draftInfo and targetName(draftInfo, destinationDraft)
+      or "Unresolved target", previewColor)
   end
 
-  drawAdjustmentButtons(9)
+  local detail = destinationEditing
+    and "Type integer ID | Enter: save draft | Esc: cancel"
+    or draftInfo and ("Type: " .. targetKind(draftInfo) ..
+      "   Known: " .. yesNo(draftInfo.known) ..
+      "   Current: " .. yesNo(draftInfo.current))
+    or tostring(draftInfoError)
+  writeCentered(8, detail, destinationEditing and colors.accent or colors.muted)
+
+  drawAdjustmentButtons(10)
 
   local editWidth = 12
   local applyWidth = 12
@@ -866,18 +990,18 @@ local function drawDestination()
   local totalWidth = editWidth + applyWidth + syncWidth + 2
   local x = math.floor((width - totalWidth) / 2) + 1
   if destinationEditing then
-    drawButton(x, 11, editWidth, "SAVE DRAFT", true,
+    drawButton(x, 12, editWidth, "SAVE DRAFT", true,
       saveDestinationEdit, true)
   else
-    drawButton(x, 11, editWidth, "EDIT ID", true,
+    drawButton(x, 12, editWidth, "EDIT ID", true,
       beginDestinationEdit)
   end
-  drawButton(x + editWidth + 1, 11, applyWidth, "APPLY",
+  drawButton(x + editWidth + 1, 12, applyWidth, "APPLY",
     destinationDirty and not destinationEditing, applyDestination)
-  drawButton(x + editWidth + applyWidth + 2, 11, syncWidth, "SYNC",
+  drawButton(x + editWidth + applyWidth + 2, 12, syncWidth, "SYNC",
     not destinationEditing, function() syncDestination(true) end)
 
-  writeCentered(13,
+  writeCentered(14,
     "Only discovered valid targets are accepted; failures do not consume fuel",
     colors.muted)
 end

@@ -46,6 +46,11 @@ public class WarpCurrentTargetInfoTest {
 		assertEquals("dimension", info.get("kind"));
 		assertEquals("Test Earth", info.get("name"));
 		assertEquals(Boolean.TRUE, info.get("current"));
+
+		Map<?, ?> requested = successfulInfo(
+				TileWarpShipMonitor.describeTarget(station, PLANET_ID));
+		assertEquals(PLANET_ID, ((Number)requested.get("id")).intValue());
+		assertEquals("Test Earth", requested.get("name"));
 	}
 
 	@Test
@@ -80,6 +85,11 @@ public class WarpCurrentTargetInfoTest {
 				stationOrbiting(777777777));
 		assertNull(result[0]);
 		assertEquals("invalid_target", result[1]);
+
+		Object[] requested = TileWarpShipMonitor.describeTarget(
+				stationOrbiting(0), 777777777);
+		assertNull(requested[0]);
+		assertEquals("invalid_target", requested[1]);
 	}
 
 	private static SpaceObject stationOrbiting(int targetId) {

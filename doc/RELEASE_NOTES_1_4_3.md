@@ -17,6 +17,9 @@
 - Warp Controller 新增 `getCurrentTargetInfo()`，以单次服务端快照返回当前轨道目标的
   ID、类型和真实名称；未知 ID 不会回退成 Earth，跃迁中返回稳定 `in_warp` soft
   error。
+- Warp Controller 新增 `getTargetInfo(id)`，其 OpenOS 子程序现在同时显示当前环绕
+  天体、已提交目的地和正在编辑的数字 ID 所对应的真实名称与类型；无效 ID 明确
+  显示为 unresolved。
 - 所有可修改操作均经过服务端权威校验。自动化不能绕过已发现天体、燃料、Artifact、
   Warp Core、发射流程、红石启停或多方块结构等既有玩法约束。
 - OpenComputers 保持可选依赖；未安装时 AdvancedRocketry 客户端与 dedicated server
@@ -36,6 +39,8 @@
   返回 shell。子程序缺失或异常不会同时终止主界面。
 - 所有 GUI 继续使用同一深蓝/青色主题、`component.invoke()` 兼容调用层，以及
   `50x16` 至 `80x25` 自适应布局。
+- Atmosphere Detector 子程序现在可枚举并切换同一 OC 网络中的多个检测器；切换时
+  会重新载入所选方块的六面状态、大气列表与目标，未提交选择不会跨设备串用。
 
 ### 条件程序软盘与离线更新
 
@@ -48,6 +53,8 @@
   误吞不可恢复的数据盘。
 - 插盘后执行 `install AdvRocket` 安装完整套件；更换新版 AR JAR 后可插入同一张
   实体软盘执行 `update`，从新 JAR 的只读资源离线覆盖 managed files。
+- 控制套件 manifest 增加独立 `suite.2` revision，使同一 `1.4.3-continuation`
+  模组版本内的 Lua 迭代也能被 `update` 正确识别并覆盖旧安装。
 - universal JAR 会在 ForgeGradle reobfuscation 后恢复 OpenComputers ZIP 文件系统
   所需的显式目录条目，并在构建时逐级验证；修复程序盘可合成但插入后无法挂载、
   `install AdvRocket` 报 `Nothing to install labeled: AdvRocket` 的问题。

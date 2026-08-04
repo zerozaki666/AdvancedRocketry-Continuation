@@ -14,6 +14,10 @@ OpenComputers `1.12.44-GTNH`.
 No third-party GUI library is required. The program discovers the first
 connected component of each type, refreshes the live station state once per
 second, and reports AdvancedRocketry soft errors without terminating the GUI.
+It invokes callbacks by component address for compatibility with the GTNH
+OpenComputers dynamic proxy implementation. If an older controller exposes the
+individual altitude or orientation getters but not the combined snapshot
+getter, the GUI automatically falls back to those individual methods.
 
 ### Requirements
 

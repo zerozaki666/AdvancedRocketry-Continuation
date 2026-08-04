@@ -6,7 +6,7 @@ local computer = require("computer")
 local event = require("event")
 
 local APP_NAME = "Advanced Rocketry Station Control"
-local APP_VERSION = "1.0.0"
+local APP_VERSION = "1.0.1"
 local REFRESH_SECONDS = 1
 
 local colors = {
@@ -190,38 +190,56 @@ local function rescanControllers(showMessage)
 end
 
 local function invokeGetter(controller, method, ...)
-  if not controller.proxy then
+  if not controller.proxy or not controller.address then
     return false, "not_connected", controller.label .. " Controller is not connected"
   end
 
-  local callback = controller.proxy[method]
-  if type(callback) ~= "function" then
-    return false, "missing_method", method .. " is not available"
-  end
-
-  local invoked, first, second, third = pcall(callback, ...)
+  local invoked, first, second, third = pcall(
+    component.invoke,
+    controller.address,
+    method,
+    ...
+  )
   if not invoked then
-    return false, "oc_exception", tostring(first)
+    local reason = tostring(first)
+    local lowerReason = string.lower(reason)
+    if string.find(lowerReason, "no such method", 1, true)
+        or string.find(lowerReason, "unknown method", 1, true) then
+      return false, "missing_method", method .. " is not available"
+    end
+    return false, "oc_exception", reason
   end
   if first == nil then
-    return false, tostring(second or "unknown_error"), tostring(third or "Getter failed")
+    local code = tostring(second or "unknown_error")
+    local lowerCode = string.lower(code)
+    if string.find(lowerCode, "no such method", 1, true)
+        or string.find(lowerCode, "unknown method", 1, true) then
+      return false, "missing_method", method .. " is not available"
+    end
+    return false, code, tostring(third or "Getter failed")
   end
   return true, first, second, third
 end
 
 local function invokeSetter(controller, method, ...)
-  if not controller.proxy then
+  if not controller.proxy or not controller.address then
     return false, "not_connected", controller.label .. " Controller is not connected"
   end
 
-  local callback = controller.proxy[method]
-  if type(callback) ~= "function" then
-    return false, "missing_method", method .. " is not available"
-  end
-
-  local invoked, success, valueOrCode, message = pcall(callback, ...)
+  local invoked, success, valueOrCode, message = pcall(
+    component.invoke,
+    controller.address,
+    method,
+    ...
+  )
   if not invoked then
-    return false, "oc_exception", tostring(success)
+    local reason = tostring(success)
+    local lowerReason = string.lower(reason)
+    if string.find(lowerReason, "no such method", 1, true)
+        or string.find(lowerReason, "unknown method", 1, true) then
+      return false, "missing_method", method .. " is not available"
+    end
+    return false, "oc_exception", reason
   end
   if success ~= true then
     return false, tostring(valueOrCode or "unknown_error"), tostring(message or "Setter failed")
@@ -237,10 +255,70 @@ local function rememberError(controller, code, message)
   end
 end
 
+local function getAltitudeSnapshot(controller)
+  local ok, valueOrCode, message = invokeGetter(controller, "getStatus")
+  if ok or valueOrCode ~= "missing_method" then
+    return ok, valueOrCode, message
+  end
+
+  local currentOk, currentOrCode, currentMessage =
+    invokeGetter(controller, "getCurrentAltitude")
+  if not currentOk then
+    return false, currentOrCode, currentMessage
+  end
+
+  local targetOk, targetOrCode, targetMessage =
+    invokeGetter(controller, "getTargetAltitude")
+  if not targetOk then
+    return false, targetOrCode, targetMessage
+  end
+
+  local rateOk, rateOrCode, rateMessage =
+    invokeGetter(controller, "getChangeRateMultiplier")
+  if not rateOk then
+    return false, rateOrCode, rateMessage
+  end
+
+  local state = "idle"
+  if math.abs(currentOrCode - targetOrCode) > 0.01 then
+    state = currentOrCode < targetOrCode and "ascending" or "descending"
+  end
+
+  return true, {
+    state = state,
+    currentAltitude = currentOrCode,
+    targetAltitude = targetOrCode,
+    changeRateMultiplier = rateOrCode
+  }
+end
+
+local function getOrientationSnapshot(controller)
+  local ok, valueOrCode, message = invokeGetter(controller, "getOrientation")
+  if ok or valueOrCode ~= "missing_method" then
+    return ok, valueOrCode, message
+  end
+
+  local yawOk, yawOrCode, yawMessage = invokeGetter(controller, "getYaw")
+  if not yawOk then
+    return false, yawOrCode, yawMessage
+  end
+
+  local pitchOk, pitchOrCode, pitchMessage =
+    invokeGetter(controller, "getPitch")
+  if not pitchOk then
+    return false, pitchOrCode, pitchMessage
+  end
+
+  return true, {
+    targetYawRate = yawOrCode,
+    targetPitchRate = pitchOrCode
+  }
+end
+
 local function refreshSnapshots()
   local altitude = controllers.altitude
   if altitude.proxy then
-    local ok, valueOrCode, message = invokeGetter(altitude, "getStatus")
+    local ok, valueOrCode, message = getAltitudeSnapshot(altitude)
     if ok then
       snapshots.altitude = valueOrCode
       altitude.error = nil
@@ -259,7 +337,7 @@ local function refreshSnapshots()
 
   local orientation = controllers.orientation
   if orientation.proxy then
-    local ok, valueOrCode, message = invokeGetter(orientation, "getOrientation")
+    local ok, valueOrCode, message = getOrientationSnapshot(orientation)
     if ok then
       snapshots.orientation = valueOrCode
       orientation.error = nil

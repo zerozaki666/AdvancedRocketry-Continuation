@@ -450,7 +450,11 @@ current target has no biome surface.
 
 Minecraft 1.7.10 does not provide the later registry-name contract used by
 OCRocketry for Minecraft 1.12.2. This component therefore returns the actual
-numeric `biomeID` and display name. Results are de-duplicated and sorted by ID.
+numeric `biomeID`, display name, and a separately resolved owner `modId`.
+Ownership is derived from FML's loaded mod containers, class packages, and mod
+source files. Vanilla and AdvancedRocketry biomes have explicit stable owner
+IDs; a biome that cannot be attributed unambiguously reports `unknown` rather
+than inventing a registry name. Results are de-duplicated and sorted by ID.
 
 ## Methods
 
@@ -461,9 +465,9 @@ target:
 
 ```lua
 {
-  { id = 1, name = "Plains" },
-  { id = 4, name = "Forest" },
-  { id = 18, name = "ForestHills" }
+  { id = 1, name = "Plains", modId = "minecraft" },
+  { id = 4, name = "Forest", modId = "minecraft" },
+  { id = 182, name = "Alps", modId = "BiomesOPlenty" }
 }
 ```
 
@@ -478,9 +482,14 @@ if not biomes then
 end
 
 for _, biome in ipairs(biomes) do
-  print(string.format("%3d | %s", biome.id, biome.name))
+  print(string.format("%3d | %s [%s]",
+    biome.id, biome.name, biome.modId))
 end
 ```
+
+`modId` is the exact case-sensitive FML mod id when ownership can be resolved.
+It is `minecraft` for vanilla biomes and `unknown` for an ambiguous legacy
+class. Existing programs that only consume `id` and `name` remain compatible.
 
 Possible scan-specific failures include:
 

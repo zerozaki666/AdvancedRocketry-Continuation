@@ -114,7 +114,7 @@ OCRocketry 使用 MIT License。实现阶段可参考其公开 API 设计，但�
 | Atmosphere `getAtmosphereType` | `getAtmosphereType` | 保留，并增加结构化 `getAtmosphere` |
 | Atmosphere `isBreathable` | `isBreathable` | 保留 |
 | Atmosphere `allowsCombustion` | `allowsCombustion` | 保留 |
-| Biome `scan(withModId)` | `scan()` / `scanNames()` | 适配 1.7.10，无虚假 registry name |
+| Biome `scan(withModId)` | `scan()` / `scanNames()` | 适配 1.7.10，分离返回 legacy id/name 与 FML owner mod id |
 | Hologram `currentPlanet` | `getCurrentPlanet` / `getDestination` | 拆分 current orbit 与权威 destination |
 | Hologram `selectPlanet` | `selectTarget` | 支持 planet 与本 fork 的 black-hole target |
 | `planetSelected` | `planet_selected` | 保留状态边沿语义，使用项目命名约定 |
@@ -441,13 +441,17 @@ Atmosphere table：
 ```lua
 {
   id = 1,
-  name = "Plains"
+  name = "Plains",
+  modId = "minecraft"
 }
 ```
 
 Minecraft 1.7.10 没有 1.12.2 的 `Biome#getRegistryName()` 契约，因此不接受
-OCRocketry 的 `withModId` 参数，也不返回伪造的 mod id。数字 `biomeID` 是该版本
-实际可用的稳定标识。
+OCRocketry 的 `withModId` 参数，也不伪造 registry name。数字 `biomeID` 是该版本
+实际可用的稳定标识；`modId` 则根据 FML ModContainer、class package 与 source file
+解析 biome 的归属。Vanilla 固定为 `minecraft`，AdvancedRocketry 固定使用本模组
+mod id，无法无歧义归属的 legacy class 返回 `unknown`。新增字段不影响只读取
+`id`/`name` 的既有程序。
 
 ### 8.2 扫描规则
 
@@ -999,7 +1003,7 @@ local biomes, code, message = scanner.scan()
 assert(biomes, tostring(code) .. ": " .. tostring(message))
 
 for _, biome in ipairs(biomes) do
-  print(biome.id, biome.name)
+  print(biome.id, biome.name, biome.modId)
 end
 ```
 

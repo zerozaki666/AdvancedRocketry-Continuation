@@ -119,7 +119,7 @@ public class TileBiomeScanner extends TileMultiPowerConsumer implements SimpleCo
 		return "biome_scanner";
 	}
 
-	@Callback(doc = "function():table -- Scans biome id/name entries for the current orbit target.")
+	@Callback(doc = "function():table -- Scans biome id/name/modId entries for the current orbit target.")
 	@Optional.Method(modid = "OpenComputers")
 	public Object[] scan(Context context, Arguments args) {
 		Result access = OpenComputersComponentAccess.resolveStation(this);

@@ -79,6 +79,7 @@ public final class BiomeScanService {
 			entry.put("id", biome.biomeID);
 			entry.put("name", biome.biomeName == null
 					? "" : biome.biomeName);
+			entry.put("modId", BiomeModIdResolver.resolve(biome));
 			result.add(entry);
 		}
 		return result;

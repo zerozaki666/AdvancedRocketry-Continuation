@@ -110,12 +110,44 @@ dependencies {
             classifier: 'dev'
 }
 
+def advRocketManifestVersion =
+        "${version_major}.${version_minor}.${version_revis}${version_qualifier}" +
+        project.getBuildNumber()
+def advRocketAppFiles = [
+        'station_control.lua',
+        'biome_scanner.lua',
+        'rocket_monitor.lua',
+        'warp_controller.lua',
+        'atmosphere_detector.lua',
+        'planet_selector.lua',
+        'laser_drill.lua'
+]
+
 processResources {
     inputs.property 'version', project.version
     inputs.property 'mcversion', project.minecraft.version
+    inputs.property 'advRocketManifestVersion', advRocketManifestVersion
+    inputs.files fileTree('oc_examples') {
+        include(['advrocket.lua', 'update.lua'] + advRocketAppFiles)
+    }
 
     filesMatching('mcmod.info') {
         expand version: project.version, mcversion: project.minecraft.version
+    }
+
+    filesMatching(
+            'assets/advancedrocketry/loot/advrocket/usr/lib/advrocket/manifest.lua') {
+        expand mod_version: advRocketManifestVersion
+    }
+
+    from('oc_examples') {
+        include 'advrocket.lua', 'update.lua'
+        into 'assets/advancedrocketry/loot/advrocket/usr/bin'
+    }
+
+    from('oc_examples') {
+        include advRocketAppFiles
+        into 'assets/advancedrocketry/loot/advrocket/usr/lib/advrocket/apps'
     }
 }
 
@@ -131,3 +163,56 @@ task deobfJar(type: Jar) {
 }
 
 tasks.build.dependsOn deobfJar
+
+task verifyAdvRocketPackage {
+    dependsOn jar, deobfJar
+    doLast {
+        def root = 'assets/advancedrocketry/loot/advrocket/'
+        def requiredEntries = [
+                root + '.prop',
+                root + 'usr/bin/advrocket.lua',
+                root + 'usr/bin/update.lua',
+                root + 'usr/lib/advrocket/manifest.lua'
+        ] + advRocketAppFiles.collect {
+            root + 'usr/lib/advrocket/apps/' + it
+        }
+        [tasks.jar.archiveFile.get().asFile,
+                tasks.deobfJar.archiveFile.get().asFile].each { archive ->
+            if (!archive.isFile())
+                throw new GradleException(
+                        "Expected archive was not created: ${archive}")
+            def zip = new java.util.zip.ZipFile(archive)
+            try {
+                def fileEntries = [] as Set
+                def entries = zip.entries()
+                while (entries.hasMoreElements()) {
+                    def entry = entries.nextElement()
+                    if (!entry.directory)
+                        fileEntries.add(entry.name)
+                }
+                requiredEntries.each { entry ->
+                    if (!fileEntries.contains(entry))
+                        throw new GradleException(
+                                "${archive.name} is missing ${entry}")
+                }
+                def unexpected = fileEntries.findAll {
+                    it.startsWith(root) && !requiredEntries.contains(it)
+                }
+                if (!unexpected.isEmpty())
+                    throw new GradleException(
+                            "${archive.name} contains unexpected AdvRocket disk resources: ${unexpected}")
+                def bundledApi = fileEntries.find {
+                    it.startsWith('li/cil/oc/api/')
+                }
+                if (bundledApi != null)
+                    throw new GradleException(
+                            "${archive.name} bundles OpenComputers API class ${bundledApi}")
+            }
+            finally {
+                zip.close()
+            }
+        }
+    }
+}
+
+tasks.build.dependsOn verifyAdvRocketPackage

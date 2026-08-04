@@ -1052,6 +1052,44 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		return new Object[] { access.getSpaceObject().getOrbitingPlanetId() };
 	}
 
+	@Callback(doc = "function():table -- Returns the current orbit target id, kind and display name; unavailable during warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCurrentTargetInfo(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		return describeCurrentTarget(station);
+	}
+
+	static Object[] describeCurrentTarget(SpaceObject station) {
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station",
+					"Component is not on a valid space station.");
+		int currentTargetId = station.getOrbitingPlanetId();
+		if(currentTargetId == SpaceObjectManager.WARPDIMID)
+			return OpenComputersComponentAccess.getterError("in_warp",
+					"Station is currently in warp.");
+		StationTarget target = StationTargetResolver.getInstance()
+				.resolve(currentTargetId);
+		if(!target.isDestination())
+			return OpenComputersComponentAccess.getterError(
+					"invalid_target",
+					"Current orbit target is invalid.");
+		Map<String, Object> info = StationDestinationService.describe(
+				station, target);
+		Object name = info.get("name");
+		if(!(name instanceof String) || ((String)name).trim().isEmpty())
+			return OpenComputersComponentAccess.getterError(
+					"invalid_target",
+					"Current orbit target has no display name.");
+		return new Object[] { info };
+	}
+
 	@Callback(doc = "function():number -- Returns the committed station destination.")
 	@Optional.Method(modid = "OpenComputers")
 	public Object[] getDestination(Context context, Arguments args) {

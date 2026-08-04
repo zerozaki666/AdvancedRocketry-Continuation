@@ -2,7 +2,7 @@
 
 ## 0. 文档状态
 
-- 状态：Draft，等待玩法与安装方案审阅
+- 状态：Implemented，已按确认方案开发
 - 目标分支：`agent/opencomputers-integration-spec`
 - 审查基线：`4cb422418547b261affacf1f06210e516c06cb5a`
 - Minecraft：`1.7.10`
@@ -19,7 +19,8 @@
 - 整合包确认版本：`loadedmod.csv` 中包含 OpenComputers
   `1.12.44-GTNH`
 
-本次规格提交只新增本文档，不包含 Java、Lua、资源、配方或构建逻辑改动。
+本文档最初以仅包含规格的提交供审阅；确认后所述 Java、Lua、资源、配方与
+构建逻辑已经在当前实现中完成。
 
 ---
 
@@ -704,7 +705,7 @@ update
 return {
   packageId = "advancedRocketry:advrocket",
   formatVersion = 1,
-  modVersion = "1.4.2",
+  modVersion = "1.4.3-continuation",
   files = {
     "usr/bin/advrocket.lua",
     "usr/bin/update.lua",

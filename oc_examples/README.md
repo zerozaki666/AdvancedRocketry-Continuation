@@ -3,6 +3,53 @@
 These examples target AdvancedRocketry Continuation for Minecraft 1.7.10 and
 OpenComputers `1.12.44-GTNH`.
 
+## AdvRocket control suite and program disk
+
+AdvancedRocketry Continuation `1.4.3` registers an `AdvRocket` program floppy
+when OpenComputers is installed. It is a native cyan OpenComputers loot-disk
+variant backed by a read-only filesystem in the AdvancedRocketry JAR. If
+OpenComputers is absent, neither the disk nor its recipe is registered and the
+base mod remains independently loadable.
+
+Craft the program disk shapelessly from:
+
+- one LibVulpes Linker;
+- one completely blank, untagged OpenComputers Floppy Disk.
+
+OpenOS, loot, labeled, colored, or player-data floppies are deliberately
+rejected so the recipe cannot destroy an existing disk. Insert the resulting
+disk into an OpenOS computer and run:
+
+```sh
+install AdvRocket
+advrocket
+```
+
+`advrocket.lua` provides a shared main screen with Minecraft time, the current
+station orbit target from a connected `warp_controller`, and station altitude
+from a connected `altitude_controller`. Missing components and callback errors
+are shown as red `ERROR` values. Seven touch/keyboard buttons launch the
+standalone applications documented below. Pressing `Q` inside a child returns
+to the main screen; pressing `Q` on the main screen exits to OpenOS.
+
+After replacing the AdvancedRocketry JAR with a newer build, insert the same
+physical program disk and run:
+
+```sh
+update
+```
+
+The updater is offline and only accepts one read-only disk whose manifest has
+the package ID `advancedRocketry:advrocket`. It validates every managed path,
+copies the complete update into staging, replaces the installed manifest last,
+and rolls back the old managed files if committing the update fails. It does
+not read or overwrite `/home`, `/etc`, boot configuration, or unrelated
+programs.
+
+The files in this directory remain the canonical sources for the launcher,
+updater, and seven applications. The Gradle resource task maps the explicit
+suite whitelist into the program disk during every build.
+
 ## Station controller GUI
 
 `station_control.lua` is a standalone touch-friendly OpenOS application for:

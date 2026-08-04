@@ -4,6 +4,7 @@ package zmaster587.advancedRocketry;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.Mod;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.Mod.Instance;
 import cpw.mods.fml.common.SidedProxy;
@@ -122,6 +123,7 @@ import zmaster587.advancedRocketry.event.PlanetEventHandler;
 import zmaster587.advancedRocketry.event.WorldEvents;
 import zmaster587.advancedRocketry.integration.CompatibilityMgr;
 import zmaster587.advancedRocketry.integration.GalacticCraftHandler;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersProgramDiskRegistration;
 import zmaster587.libVulpes.inventory.GuiHandler;
 import zmaster587.libVulpes.items.ItemBlockMeta;
 import zmaster587.libVulpes.items.ItemIngredient;
@@ -1241,6 +1243,9 @@ public class AdvancedRocketry {
 	@EventHandler
 	public void load(FMLInitializationEvent event)
 	{
+		if(CompatibilityMgr.openComputersLoaded)
+			registerOpenComputersProgramDisk();
+
 		zmaster587.advancedRocketry.cable.NetworkRegistry.registerFluidNetwork();
 		ItemStack userInterface = new ItemStack(AdvancedRocketryItems.itemMisc, 1,0);
 		ItemStack basicCircuit = new ItemStack(AdvancedRocketryItems.itemIC, 1,0);
@@ -1536,6 +1541,11 @@ public class AdvancedRocketry {
 		TileMultiBlock.addMapping('D', list);
 		
 		machineRecipes.createAutoGennedRecipes(modProducts);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersProgramDisk() {
+		OpenComputersProgramDiskRegistration.register();
 	}
 
 

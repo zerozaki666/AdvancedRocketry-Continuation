@@ -1,12 +1,12 @@
 # AdvancedRocketry Continuation for Minecraft 1.7.10
 
 这是 AdvancedRocketry 1.7.10 的社区延续分支。当前版本为
-`1.4.2-continuation`，需要配套的
+`1.4.3-continuation`，需要配套的
 [`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)
 `0.2.10` 或更高版本。
 
 本版本的完整变更与升级说明见
-[`doc/RELEASE_NOTES_1_4_2.md`](doc/RELEASE_NOTES_1_4_2.md)。
+[`doc/RELEASE_NOTES_1_4_3.md`](doc/RELEASE_NOTES_1_4_3.md)。
 
 本分支选择性移植了
 [`kuzuanpa/AdvancedRocketry-TFRU`](https://github.com/kuzuanpa/AdvancedRocketry-TFRU)
@@ -17,6 +17,11 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 [`TFRU_COMMIT_PORT_AUDIT.md`](TFRU_COMMIT_PORT_AUDIT.md)。
 
 ## 本次延续版新增与修复
+
+- 新增原生 OpenComputers 空间站/火箭自动化组件、七套独立 OpenOS GUI 与
+  `advrocket` 统一主界面。安装 OpenComputers 时可合成原生 AdvRocket 程序软盘，
+  使用 `install AdvRocket` 安装，并通过离线 `update` 从新版 JAR 安全覆盖套件；
+  未安装 OpenComputers 时不注册软盘或配方，AdvancedRocketry 仍可独立启动。
 
 - FTL Warp Core 通过 OreDictionary 消耗 `gemDilithium` 或
   `crystalDilithium`，并按 `pointsPerDilithium` 配置正确计算燃料点。

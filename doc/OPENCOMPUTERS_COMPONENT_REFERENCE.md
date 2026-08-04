@@ -688,6 +688,28 @@ Returns the ID of the target the station is currently orbiting.
 - Returns `currentTargetId`.
 - Returns `in_warp` while the station is in warp.
 
+### `getCurrentTargetInfo()`
+
+Returns the current orbit target's stable ID, kind and display name in one
+server-side snapshot:
+
+```lua
+{
+  id = 0,
+  kind = "dimension", -- or "black_hole"
+  name = "Earth",
+  known = true,
+  current = true,
+  destination = false
+}
+```
+
+The callback resolves custom planets and synthetic top-level black-hole
+targets through AdvancedRocketry's fail-closed station target resolver. It
+never treats an unknown dimension ID as Earth. It returns `in_warp` while the
+station is transitioning and `invalid_target` when the current target cannot
+be resolved or has no display name.
+
 ### `getDestination()`
 
 Returns the committed station destination ID.

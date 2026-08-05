@@ -92,6 +92,16 @@
 - 该临时剔除仅作用于主世界的常规天空；AR 行星、空间站、自由空间及其他维度的
   大气渲染保持不变，火箭起降期间已有的临时轨道天空切换也继续保留。
 
+### 行星芯片旅行模式
+
+- 新增 `Rocket` 分类配置 `planetChipTravelMode`，默认为 `DIRECT`。载人火箭使用
+  Planet Identification Chip 时会直接前往所选维度，恢复经典 AdvancedRocketry
+  的行星间旅行方式；这也适用于通过 `dimMapping` 注册的 RFTools 等第三方维度。
+- 将配置改为 `MANUAL` 后，载人 Planet Chip 火箭才会进入 `freeSpaceId` 对应的
+  自由空间，继续使用 TFRU 风格的视线方向手动飞行和天体碰撞着陆。
+- Station、Asteroid、Satellite 芯片和无人火箭不受该配置影响。空值、拼写错误或
+  不支持的模式会安全回退为 `DIRECT`。
+
 ## 安装与使用
 
 1. 客户端与服务器同时替换为 `1.4.3-continuation` JAR。
@@ -117,6 +127,8 @@
 
 - Java 单元测试覆盖 Warp 当前目标信息与程序盘配方的数据安全边界。
 - 气密回归测试覆盖双门气闸多格逐步关闭，并验证只有最后一格闭合时才切断门外 Blob。
+- 行星芯片旅行模式测试覆盖默认/无效值的 `DIRECT` 回退，以及大小写和空格不敏感的
+  `MANUAL` 解析。
 - Lua 验证覆盖主界面最低/最高分辨率、组件缺失、旧 callback、跃迁状态、七个
   子程序返回路径，以及更新器的来源、路径、staging、提交和回滚流程。
 - Gradle 构建会断言 universal/deobf JAR 均包含完整程序盘资源，且不包含

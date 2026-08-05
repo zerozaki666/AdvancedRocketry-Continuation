@@ -44,8 +44,10 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 - 增加 Java 7 兼容的恒星/行星轨道模拟与远近细节（LoD）星空渲染。
 - 模拟宇宙使用安全的正 Y 原点和天体下限；自由空间火箭在客户端与服务端都会在
   位移前截断到安全高度，避免 Minecraft 1.7.10 的虚空清除逻辑误杀。
-- 由玩家实际驾驶且携带行星识别芯片的火箭可进入自由空间，按玩家视线手动航行
-  并接近目标天体着陆；空座远程发射、卫星、无人火箭和小行星任务流程保持不变。
+- 行星识别芯片默认使用 `DIRECT` 模式直接前往所选维度；将
+  `planetChipTravelMode` 改为 `MANUAL` 后，由玩家实际驾驶的火箭才会进入自由空间，
+  按玩家视线手动航行并接近目标天体着陆。空座远程发射、卫星、无人火箭和小行星
+  任务流程保持不变。
 - 使用显式座位标志修复新建火箭的座位位于结构 `x=-1` 时被误判为无座位的问题；
   `getSeatX()` 对无座位仍返回旧值 `-1`，并正确迁移旧存档的“无座位”标记。
 - 增补中文翻译以及多项启动、网络同步和维度属性兼容性修复。
@@ -54,6 +56,8 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 
 - `spaceStationId`：空间站维度 ID，默认 `-2`。
 - `freeSpaceId`：自由空间维度 ID，默认 `-3`。
+- `planetChipTravelMode`：行星识别芯片旅行模式，默认 `DIRECT`；设为 `MANUAL`
+  才启用自由空间手动飞行。
 - `maxSpaceRocketSpeed`：自由空间中火箭各方向的最大速度。
 - `pointsPerDilithium`：每颗 Dilithium 提供的 FTL 燃料点（对应代码字段
   `fuelPointsPerDilithium`）。

@@ -329,6 +329,11 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId = config.get(Configuration.CATEGORY_GENERAL, "freeSpaceId", legacyFreeSpaceId, "Dimension ID to use for controlled interplanetary flight").getInt();
 		if(zmaster587.advancedRocketry.api.Configuration.spaceDimId == zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId)
 			throw new IllegalArgumentException("Advanced Rocketry's spaceStationId and freeSpaceId must be different");
+		zmaster587.advancedRocketry.api.Configuration.planetChipTravelMode =
+				zmaster587.advancedRocketry.api.PlanetChipTravelMode.parse(
+						config.get(ROCKET, "planetChipTravelMode", "DIRECT",
+								"DIRECT travels straight to the selected dimension; MANUAL enables piloted free-space flight for Planet Identification Chips")
+								.getString());
 		zmaster587.advancedRocketry.api.Configuration.enableNausea = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericNausea", true, "If true, allows players to experience nausea with low oxygen").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.enableOxygen = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericEffects", true, "If true, allows players being hurt due to lack of oxygen and allows effects from non-standard atmosphere types").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.allowMakingItemsForOtherMods = config.get(Configuration.CATEGORY_GENERAL, "makeMaterialsForOtherMods", true, "If true the machines from AdvancedRocketry will produce things like plates/rods for other mods even if Advanced Rocketry itself does not use the material (This can increase load time)").getBoolean();

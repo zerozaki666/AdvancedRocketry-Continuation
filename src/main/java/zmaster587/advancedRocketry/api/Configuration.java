@@ -23,6 +23,9 @@ public class Configuration {
 	public static int spaceDimId = -2;
 	/** Empty dimension used for controlled interplanetary flight. */
 	public static int freeSpaceDimId = -3;
+	/** Planet-chip travel is direct unless a pack explicitly enables manual flight. */
+	public static PlanetChipTravelMode planetChipTravelMode =
+			PlanetChipTravelMode.DIRECT;
 	public static int fuelPointsPer10Mb = 10;
 	public static int stationSize = 1024;
 	

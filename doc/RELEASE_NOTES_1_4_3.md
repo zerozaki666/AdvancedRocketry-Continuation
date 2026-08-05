@@ -85,6 +85,13 @@
   up、north、south、west、east 六面的 `exposed` 与 `breathable` 状态，也可读取或设置
   `any` / `all` 聚合模式。OpenComputers 未安装时方块、GUI 和红石逻辑保持完整可用。
 
+### 主世界天空临时兼容修复
+
+- 客户端加载主世界（dimension `0`）时不再永久安装 AdvancedRocketry 的自定义天空
+  renderer，主世界的天空颜色继续由原版 WorldProvider 或其他天空模组负责。
+- 该临时剔除仅作用于主世界的常规天空；AR 行星、空间站、自由空间及其他维度的
+  大气渲染保持不变，火箭起降期间已有的临时轨道天空切换也继续保留。
+
 ## 安装与使用
 
 1. 客户端与服务器同时替换为 `1.4.3-continuation` JAR。

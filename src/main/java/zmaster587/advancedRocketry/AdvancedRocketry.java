@@ -55,6 +55,7 @@ import zmaster587.advancedRocketry.armor.ItemSpaceChest;
 import zmaster587.advancedRocketry.atmosphere.AtmosphereVacuum;
 import zmaster587.advancedRocketry.backwardCompat.VersionCompat;
 import zmaster587.advancedRocketry.block.BlockAdvRocketMotor;
+import zmaster587.advancedRocketry.block.BlockAirtightInterface;
 import zmaster587.advancedRocketry.block.BlockAstroBed;
 import zmaster587.advancedRocketry.block.BlockBeacon;
 import zmaster587.advancedRocketry.block.BlockCharcoalLog;
@@ -124,6 +125,8 @@ import zmaster587.advancedRocketry.event.PlanetEventHandler;
 import zmaster587.advancedRocketry.event.WorldEvents;
 import zmaster587.advancedRocketry.integration.CompatibilityMgr;
 import zmaster587.advancedRocketry.integration.GalacticCraftHandler;
+import zmaster587.advancedRocketry.integration.appliedenergistics.AppliedEnergisticsAirtightInterfaceRegistration;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersAirtightCableRegistration;
 import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersProgramDiskRegistration;
 import zmaster587.libVulpes.inventory.GuiHandler;
 import zmaster587.libVulpes.items.ItemBlockMeta;
@@ -167,6 +170,8 @@ import zmaster587.advancedRocketry.tile.cables.TileDataPipe;
 import zmaster587.advancedRocketry.tile.cables.TileEnergyPipe;
 import zmaster587.advancedRocketry.tile.cables.TileLiquidPipe;
 import zmaster587.advancedRocketry.tile.cables.TileWirelessTransciever;
+import zmaster587.advancedRocketry.tile.airtight.TileAirtightEnergyInterface;
+import zmaster587.advancedRocketry.tile.airtight.TileAirtightFluidInterface;
 import zmaster587.advancedRocketry.tile.hatch.TileDataBus;
 import zmaster587.advancedRocketry.tile.hatch.TileSatelliteHatch;
 import zmaster587.advancedRocketry.tile.infrastructure.TileEntityFuelingStation;
@@ -260,7 +265,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,);after:OpenComputers")
+@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,);after:OpenComputers;after:appliedenergistics2")
 public class AdvancedRocketry {
 
 
@@ -912,11 +917,17 @@ public class AdvancedRocketry {
 		AdvancedRocketryBlocks.blockDataPipe = new BlockDataCable(Material.iron).setBlockName("dataPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeData");
 		AdvancedRocketryBlocks.blockFluidPipe = new BlockLiquidPipe(Material.iron).setBlockName("liquidPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeLiquid");
 		AdvancedRocketryBlocks.blockEnergyPipe = new BlockEnergyPipe(Material.iron).setBlockName("energyPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeEnergy");
+		AdvancedRocketryBlocks.blockAirtightEnergyInterface = new BlockAirtightInterface(Material.iron, TileAirtightEnergyInterface.class).setBlockName("airtightEnergyInterface").setCreativeTab(tabAdvRocketry).setBlockTextureName("libvulpes:batteryRF").setHardness(3f).setResistance(12f);
+		AdvancedRocketryBlocks.blockAirtightFluidInterface = new BlockAirtightInterface(Material.iron, TileAirtightFluidInterface.class).setBlockName("airtightFluidInterface").setCreativeTab(tabAdvRocketry).setBlockTextureName("libvulpes:fluidInput").setHardness(3f).setResistance(12f);
 
 
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockDataPipe , AdvancedRocketryBlocks.blockDataPipe .getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockFluidPipe , AdvancedRocketryBlocks.blockFluidPipe .getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockEnergyPipe , AdvancedRocketryBlocks.blockEnergyPipe.getUnlocalizedName());
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockAirtightEnergyInterface, "airtightEnergyInterface");
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockAirtightFluidInterface, "airtightFluidInterface");
+		SealableBlockHandler.INSTANCE.addSealableBlock(AdvancedRocketryBlocks.blockAirtightEnergyInterface);
+		SealableBlockHandler.INSTANCE.addSealableBlock(AdvancedRocketryBlocks.blockAirtightFluidInterface);
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockLaunchpad, "launchpad");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockRocketBuilder, "rocketBuilder");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockStructureTower, "structureTower");
@@ -1156,6 +1167,8 @@ public class AdvancedRocketry {
 		GameRegistry.registerTileEntity(TileDataBus.class, "ARdataBus");
 		GameRegistry.registerTileEntity(TileEnergyPipe.class, "AREnergyPipe");
 		GameRegistry.registerTileEntity(TileLiquidPipe.class, "ARLiquidPipe");
+		GameRegistry.registerTileEntity(TileAirtightEnergyInterface.class, "ARAirtightEnergyInterface");
+		GameRegistry.registerTileEntity(TileAirtightFluidInterface.class, "ARAirtightFluidInterface");
 		GameRegistry.registerTileEntity(TileSatelliteHatch.class, "ARsatelliteHatch");
 		GameRegistry.registerTileEntity(TileGuidanceComputerHatch.class, "ARguidanceComputerHatch");
 		GameRegistry.registerTileEntity(TileSatelliteBuilder.class, "ARsatelliteBuilder");
@@ -1245,6 +1258,11 @@ public class AdvancedRocketry {
 		OreDictionary.registerOre("turfMoon", new ItemStack(AdvancedRocketryBlocks.blockMoonTurf));
 		OreDictionary.registerOre("turfMoon", new ItemStack(AdvancedRocketryBlocks.blockMoonTurfDark));
 
+		if(Loader.isModLoaded("OpenComputers"))
+			registerOpenComputersAirtightCableBlock();
+		if(Loader.isModLoaded("appliedenergistics2"))
+			registerAppliedEnergisticsAirtightInterfaceBlocks();
+
 		CompatibilityMgr.getLoadedMods();
 
 	}
@@ -1254,6 +1272,10 @@ public class AdvancedRocketry {
 	{
 		if(CompatibilityMgr.openComputersLoaded)
 			registerOpenComputersProgramDisk();
+		if(CompatibilityMgr.openComputersLoaded)
+			registerOpenComputersAirtightCableRecipe();
+		if(Loader.isModLoaded("appliedenergistics2"))
+			registerAppliedEnergisticsAirtightInterfaceRecipes();
 
 		zmaster587.advancedRocketry.cable.NetworkRegistry.registerFluidNetwork();
 		ItemStack userInterface = new ItemStack(AdvancedRocketryItems.itemMisc, 1,0);
@@ -1342,6 +1364,8 @@ public class AdvancedRocketry {
 
 		//Plugs
 		GameRegistry.addShapedRecipe(new ItemStack(LibVulpesBlocks.blockRFBattery), " x ", "xmx"," x ", 'x', LibVulpesItems.itemBattery, 'm', LibVulpesBlocks.blockStructureBlock);
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockAirtightEnergyInterface), "psp", "srs", "psp", 'p', "plateSteel", 's', AdvancedRocketryBlocks.blockPipeSealer, 'r', LibVulpesBlocks.blockRFBattery));
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockAirtightFluidInterface), "psp", "shs", "psp", 'p', "plateSteel", 's', AdvancedRocketryBlocks.blockPipeSealer, 'h', new ItemStack(LibVulpesBlocks.blockHatch, 1, 2)));
 
 		//O2 Support
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenVent), "bfb", "bmb", "btb", 'b', Blocks.iron_bars, 'f', "fanSteel", 'm', LibVulpesBlocks.blockMotor, 't', AdvancedRocketryBlocks.blockFuelTank));
@@ -1556,6 +1580,26 @@ public class AdvancedRocketry {
 	@Optional.Method(modid = "OpenComputers")
 	private void registerOpenComputersProgramDisk() {
 		OpenComputersProgramDiskRegistration.register();
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersAirtightCableBlock() {
+		OpenComputersAirtightCableRegistration.registerBlock(tabAdvRocketry);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersAirtightCableRecipe() {
+		OpenComputersAirtightCableRegistration.registerRecipe();
+	}
+
+	@Optional.Method(modid = "appliedenergistics2")
+	private void registerAppliedEnergisticsAirtightInterfaceBlocks() {
+		AppliedEnergisticsAirtightInterfaceRegistration.registerBlocks(tabAdvRocketry);
+	}
+
+	@Optional.Method(modid = "appliedenergistics2")
+	private void registerAppliedEnergisticsAirtightInterfaceRecipes() {
+		AppliedEnergisticsAirtightInterfaceRegistration.registerRecipes();
 	}
 
 

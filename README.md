@@ -25,6 +25,10 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 - 新增无需供电的 Oxygen Detector，用于双门气闸联锁。它会忽略被气密方块遮挡的
   面，并以“任一暴露面”或“全部暴露面”可呼吸为条件输出红石；安装
   OpenComputers 时还可读取东南西北上下六面的独立检测结果。
+- 新增零缓存的气密 RF 与流体直通接口；流体接口在最后一个当前来源拆除前只允许
+  单一流体。安装对应模组时还会条件注册六面连通的气密 OpenComputers Cable、
+  8 频道 ME 智能接口及 32 频道 ME 致密智能接口，OC/AE2 未安装时这些联动方块与
+  配方完全不注册。
 
 - FTL Warp Core 通过 OreDictionary 消耗 `gemDilithium` 或
   `crystalDilithium`，并按 `pointsPerDilithium` 配置正确计算燃料点。

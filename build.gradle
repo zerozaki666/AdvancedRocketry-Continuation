@@ -87,6 +87,15 @@ dependencies {
     testRuntimeOnly('com.github.GTNewHorizons:OpenComputers:1.12.44-GTNH:api') {
         transitive = false
     }
+    compileOnly('com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-966-GTNH:api') {
+        transitive = false
+    }
+    testCompileOnly('com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-966-GTNH:api') {
+        transitive = false
+    }
+    testRuntimeOnly('com.github.GTNewHorizons:Applied-Energistics-2-Unofficial:rv3-beta-966-GTNH:api') {
+        transitive = false
+    }
     def localMicdoodleCore = fileTree(
             dir: 'libs',
             include: ['MicdoodleCore*.jar'])
@@ -314,7 +323,12 @@ task verifyAdvRocketPackage {
                 advRocketDiskRoot + '.prop',
                 advRocketDiskRoot + 'usr/bin/advrocket.lua',
                 advRocketDiskRoot + 'usr/bin/update.lua',
-                advRocketDiskRoot + 'usr/lib/advrocket/manifest.lua'
+                advRocketDiskRoot + 'usr/lib/advrocket/manifest.lua',
+                'zmaster587/advancedRocketry/tile/airtight/TileAirtightEnergyInterface.class',
+                'zmaster587/advancedRocketry/tile/airtight/TileAirtightFluidInterface.class',
+                'zmaster587/advancedRocketry/integration/opencomputers/TileAirtightOpenComputersCable.class',
+                'zmaster587/advancedRocketry/integration/appliedenergistics/TileAirtightMESmartInterface.class',
+                'zmaster587/advancedRocketry/integration/appliedenergistics/TileAirtightMEDenseInterface.class'
         ] + advRocketAppFiles.collect {
             advRocketDiskRoot + 'usr/lib/advrocket/apps/' + it
         }
@@ -373,6 +387,12 @@ task verifyAdvRocketPackage {
                 if (bundledApi != null)
                     throw new GradleException(
                             "${archive.name} bundles OpenComputers API class ${bundledApi}")
+                def bundledAeApi = fileEntries.find {
+                    it.startsWith('appeng/api/')
+                }
+                if (bundledAeApi != null)
+                    throw new GradleException(
+                            "${archive.name} bundles AE2 API class ${bundledAeApi}")
             }
             finally {
                 zip.close()

@@ -4,7 +4,8 @@
 - 版本：`1.4.3-continuation`
 - 适用于：Minecraft `1.7.10`、Forge `10.13.4.1614`、Java 8
 - 依赖：`libVulpes-Continuation 0.2.10` 或更高版本
-- 可选联动：OpenComputers `1.12.44-GTNH`
+- 可选联动：OpenComputers `1.12.44-GTNH`、Applied Energistics 2
+  `rv3-beta-966-GTNH`
 
 ## 版本重点
 
@@ -102,10 +103,28 @@
 - Station、Asteroid、Satellite 芯片和无人火箭不受该配置影响。空值、拼写错误或
   不支持的模式会安全回退为 `DIRECT`。
 
+### 气密管线与网络接口
+
+- 新增气密 RF 能量接口和气密流体接口。两个方块均为完整气密方块、六面可连接、
+  无 GUI，并采用零内部存储的直通实现；RF 接口不会缓存能量，流体接口不会持有
+  任何流体。
+- 流体接口会锁定第一个实际成功传输的流体类型。其他面尝试输入不同流体时会被
+  拒绝；只有最后一个当前流体来源管道被拆除后，接口才会解除锁定并允许另一种
+  流体接管。
+- 安装 OpenComputers 时新增气密 OC 线缆接口。它像原生 Cable 一样从六面连接
+  网络和 component，但自身不注册 component 或回调，也不会出现在组件枚举中；
+  未安装 OC 时不注册方块、TileEntity 或配方。
+- 安装 Applied Energistics 2 时新增气密 ME 智能接口（8 频道）与气密 ME 致密
+  智能接口（32 频道）。两者从六面连接 ME 网络、自身不消耗频道，无 GUI，暂不
+  动态显示频道占用；未安装 AE2 时不注册方块、TileEntity 或配方。
+- 接口贴图复用 LibVulpes/AdvancedRocketry 现有资源，构建产物不会捆绑 OC 或 AE2
+  API class，两个联动仍为 soft dependency。
+
 ## 安装与使用
 
 1. 客户端与服务器同时替换为 `1.4.3-continuation` JAR。
-2. 如果需要电脑控制，安装 OpenComputers `1.12.44-GTNH`；不使用该联动时无需安装。
+2. 如果需要电脑控制，安装 OpenComputers `1.12.44-GTNH`；如需气密 ME 接口，
+   安装 Applied Energistics 2 `rv3-beta-966-GTNH`。不使用这些联动时无需安装。
 3. 使用 Linker 与空白 Floppy Disk 合成 `AdvRocket` 程序盘。
 4. 在 OpenOS 中执行：
 
@@ -129,7 +148,9 @@
 - 气密回归测试覆盖双门气闸多格逐步关闭，并验证只有最后一格闭合时才切断门外 Blob。
 - 行星芯片旅行模式测试覆盖默认/无效值的 `DIRECT` 回退，以及大小写和空格不敏感的
   `MANUAL` 解析。
+- 气密流体接口测试覆盖首个流体锁定、多面同类来源、最后来源拆除后解锁，以及竞争
+  流体和无效面的拒绝；构建同时验证 OC/AE2 API 不会被打入成品 JAR。
 - Lua 验证覆盖主界面最低/最高分辨率、组件缺失、旧 callback、跃迁状态、七个
   子程序返回路径，以及更新器的来源、路径、staging、提交和回滚流程。
 - Gradle 构建会断言 universal/deobf JAR 均包含完整程序盘资源，且不包含
-  `li/cil/oc/api/**`。
+  `li/cil/oc/api/**` 或 `appeng/api/**`。

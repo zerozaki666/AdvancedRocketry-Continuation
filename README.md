@@ -1,5 +1,161 @@
 # AdvancedRocketry Continuation for Minecraft 1.7.10
 
+This is a community-maintained continuation fork of AdvancedRocketry for
+Minecraft 1.7.10. The current release is `1.4.3-continuation` and requires
+[`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)
+`0.2.11` or later.
+
+For the complete changes and upgrade notes for versions 1.4.2 and 1.4.3, see
+[`RELEASE_NOTES_1_4_2_AND_1_4_3_EN.md`](RELEASE_NOTES_1_4_2_AND_1_4_3_EN.md).
+
+This branch selectively ports 56 commits by which
+[`kuzuanpa/AdvancedRocketry-TFRU`](https://github.com/kuzuanpa/AdvancedRocketry-TFRU)
+is ahead of the shared baseline `d79d71d`, covering the range from `d0c66bc0`
+through `161cd3b6`, inclusive. The porting policy is to retain generally useful
+bug fixes and new features while removing content written specifically for the
+TFRU modpack, TerraFirmaCraft, GT6/GregAPI, and the Dyson sphere system. A
+commit-by-commit audit of the decisions and adaptations is available in
+[`TFRU_COMMIT_PORT_AUDIT.md`](https://github.com/zerozaki666/AdvancedRocketry-Continuation/blob/MC1.7/TFRU_COMMIT_PORT_AUDIT.md).
+
+## Additions and Fixes in This Continuation
+
+- Added native OpenComputers components for space-station and rocket automation,
+  seven independent OpenOS GUIs, and the unified `advrocket` launcher. When
+  OpenComputers is installed, the native AdvRocket program disk can be crafted,
+  installed with `install AdvRocket`, and safely refreshed from a newer JAR with
+  the offline `update` command. Without OpenComputers, neither the disk nor its
+  recipe is registered, and AdvancedRocketry still starts independently.
+- Added an unpowered Oxygen Detector for dual-door airlock interlocks. It ignores
+  faces blocked by airtight blocks and can output redstone when either any
+  exposed face or every exposed face is breathable. With OpenComputers
+  installed, the individual state of all six faces—north, south, east, west, up,
+  and down—can also be queried.
+- Added zero-buffer airtight RF and fluid passthrough interfaces. Until the last
+  current source is removed, the fluid interface accepts only one fluid type.
+  When the relevant mods are installed, the mod also conditionally registers a
+  six-sided airtight OpenComputers cable, an 8-channel ME smart interface, and a
+  32-channel ME dense smart interface. These integration blocks and recipes are
+  not registered when OC or AE2 is absent.
+
+- The FTL Warp Core now consumes `gemDilithium` or `crystalDilithium` through the
+  Ore Dictionary and correctly calculates fuel points using the
+  `pointsPerDilithium` configuration value.
+- Planet XML now supports `<spawnable>` entries with NBT. Entity registry names,
+  class names, weights, and NBT are validated safely, while creature categories
+  without custom configuration continue to use the vanilla spawn tables.
+- Recipe XML now supports item NBT. Rewritten XML escapes text correctly and
+  consistently uses semicolons as delimiters.
+- Fixed duplication exploits, null pointers, invalid output, and non-atomic fluid
+  consumption in the Oxygen Charger.
+- Added experimental multistage-rocket structural analysis. Stage engine blocks,
+  asynchronous structure scans, NBT persistence, and API queries are available.
+  The main thread first creates a detached snapshot containing TileEntity NBT,
+  so the background thread never reads the live rocket blocks or TileEntities.
+  Stages are not yet separated or ignited automatically.
+- Added a projector API through which other mods can register character-mapped
+  structures. No direct GregAPI or GT6 integration layer was introduced.
+- The jetpack renderer is now initialized only once, alongside multiple fixes for
+  GUIs, star-map zooming, the Linker, phantom blocks, rocket rendering, and null
+  pointers.
+- Separated the space-station dimension from the free-flight space dimension.
+  Their default IDs are now `-2` and `-3`, respectively, and startup checks for
+  dimension conflicts. Legacy addon class names `WorldProviderSpace` and
+  `RenderSpaceSky` retain their space-station semantics.
+- Added Java 7-compatible stellar and planetary orbital simulation together with
+  level-of-detail (LoD) starfield rendering.
+- The simulated universe now uses a safe positive-Y origin and lower bounds for
+  celestial bodies. On both client and server, free-space rockets are clamped to
+  a safe altitude before movement to prevent Minecraft 1.7.10's void-removal
+  logic from deleting them incorrectly.
+- Planet Identification Chips use `DIRECT` travel by default. Setting
+  `planetChipTravelMode` to `MANUAL` makes only player-piloted rockets enter free
+  space, travel according to the player's view direction, and land after
+  approaching a target body. Empty-seat remote launches, satellites, unmanned
+  rockets, and asteroid missions retain their previous workflows.
+- Added an explicit seat-presence flag so a newly built rocket whose seat is at
+  structure coordinate `x=-1` is no longer mistaken for a seatless rocket.
+  `getSeatX()` still returns the legacy value `-1` when no seat exists, and old
+  saves with the seatless marker are migrated correctly.
+- Expanded the Simplified Chinese translation and added multiple startup,
+  network-synchronization, and dimension-property compatibility fixes.
+
+Related configuration options:
+
+- `spaceStationId`: space-station dimension ID; default `-2`.
+- `freeSpaceId`: free-flight space dimension ID; default `-3`.
+- `planetChipTravelMode`: Planet Identification Chip travel mode; default
+  `DIRECT`. Set it to `MANUAL` to enable manual free-space flight.
+- `maxSpaceRocketSpeed`: maximum rocket speed in each direction while in free
+  space.
+- `pointsPerDilithium`: FTL fuel points supplied by each piece of Dilithium. The
+  corresponding code field is `fuelPointsPerDilithium`.
+
+## Explicitly Not Ported
+
+- TerraFirmaCraft/TFRU dimension migration, environment detection, version
+  suffixes, and modpack-specific configuration.
+- Dyson spheres, Dyson swarms, stellar dimensions, landing on stars, and the
+  related models, textures, and renderers.
+- GregAPI-based GT6 projector integration and third-party JARs bundled directly
+  into the repository.
+- Maven/build-script changes added for modpack distribution and temporary changes
+  that disabled GUIs.
+
+The project's pre-existing general GregTech compatibility code and optional
+integration remain in place. The excluded content is specifically the tightly
+coupled GT6/GregAPI implementation later added by the TFRU branch.
+
+## Original Core Features
+
+- Build rockets from most blocks and operate them with fuel, guidance chips, and
+  multiple mission payloads.
+- Construct space stations orbiting planets or moons, perform warp travel, dock
+  vehicles, and control local gravity.
+- Define planetary systems through XML, with dynamic orbits, gases and oxygen,
+  satellites, astronomical observation, and data research.
+- Automate asteroid mining, gas-giant resource collection, orbital lasers, and
+  cross-dimensional logistics.
+- Integrate with IC2, RF, and mappings for many external dimensions.
+
+## Building
+
+JDK 8 is required. The accompanying libVulpes subproject targets Java 8, while
+AdvancedRocketry itself retains Java 7 source and target compatibility. The
+recommended layout places the two repositories side by side:
+
+```text
+advancedRocketryProject/
+├── AdvancedRocketry-Continuation/
+└── libVulpes-Continuation/
+```
+
+Then run the following from `AdvancedRocketry-Continuation`:
+
+```bash
+./gradlew build
+```
+
+`settings.gradle` prefers the adjacent `libVulpes-Continuation` directory while
+retaining a fallback for the legacy directory name `libVulpes`. Both subprojects
+use Gradle 7.4.2 and a Gradle-7-compatible ForgeGradle fork. The build scripts
+first attempt to resolve the historical Galacticraft 3.0.12.504 development
+dependencies. If those old Maven coordinates are unavailable, place matching
+3.0.12 development JARs for both `MicdoodleCore` and `GalacticraftCore` in
+`AdvancedRocketry-Continuation/libs/`; the build will use the local JARs instead.
+The repository does not distribute those third-party JARs.
+
+## License and Sources
+
+This continuation contains ported code from an AGPL-3.0 branch and is therefore
+released as a whole under the GNU Affero General Public License v3.0 in
+[`LICENSE`](https://github.com/zerozaki666/AdvancedRocketry-Continuation/blob/MC1.7/LICENSE).
+The MIT license text for the original AdvancedRocketry code is retained in
+[`LICENSE-MIT`](https://github.com/zerozaki666/AdvancedRocketry-Continuation/blob/MC1.7/LICENSE-MIT),
+and its original copyright notices continue to apply to the corresponding code.
+
+---
+# AdvancedRocketry Continuation for Minecraft 1.7.10
+
 这是 AdvancedRocketry 1.7.10 的社区延续分支。当前版本为
 `1.4.3-continuation`，需要配套的
 [`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)

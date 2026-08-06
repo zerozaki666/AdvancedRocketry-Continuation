@@ -14,6 +14,7 @@ import li.cil.oc.api.machine.Arguments;
 import li.cil.oc.api.machine.Callback;
 import li.cil.oc.api.machine.Context;
 import li.cil.oc.api.network.SimpleComponent;
+import net.minecraft.block.Block;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.network.NetworkManager;
@@ -86,9 +87,26 @@ public class TileOxygenDetector extends TileEntity implements
 		boolean detected = OxygenDetectorLogic.shouldEmit(requireAllSides,
 				snapshot.exposed, snapshot.breathable);
 		int metadata = worldObj.getBlockMetadata(xCoord, yCoord, zCoord);
-		if((metadata == 1) != detected)
+		if((metadata == 1) != detected) {
 			worldObj.setBlockMetadataWithNotify(xCoord, yCoord, zCoord,
 					detected ? 1 : 0, 3);
+			notifyIndirectRedstoneNeighbors();
+		}
+	}
+
+	/**
+	 * Metadata notification reaches the detector's immediate neighbours, but a
+	 * strongly powered solid block does not forward that update to redstone on
+	 * its opposite side. Notify around every adjacent block so indirect power
+	 * consumers recalculate when the detector switches on or off.
+	 */
+	private void notifyIndirectRedstoneNeighbors() {
+		Block detectorBlock = worldObj.getBlock(xCoord, yCoord, zCoord);
+		for(ForgeDirection direction : ForgeDirection.VALID_DIRECTIONS)
+			worldObj.notifyBlocksOfNeighborChange(
+					xCoord + direction.offsetX,
+					yCoord + direction.offsetY,
+					zCoord + direction.offsetZ, detectorBlock);
 	}
 
 	private SideSnapshot readAllSides() {

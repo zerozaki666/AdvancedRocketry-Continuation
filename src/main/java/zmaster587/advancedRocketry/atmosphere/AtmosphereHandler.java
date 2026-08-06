@@ -176,15 +176,29 @@ public class AtmosphereHandler {
 					handler.onBlockRemove(pos);
 				else {
 					//Place block
-					if( blob.contains(pos) && SealableBlockHandler.isFulBlock(world, pos)) {
-						blob.removeBlock(x, y, z);
-					}
-					else if(!blob.contains(blob.getRootPosition())) {
+					boolean blobWasCut = removeSealedPositionFromBlob(blob, pos,
+							SealableBlockHandler.INSTANCE.isBlockSealed(world, pos));
+					if(!blobWasCut && !blob.contains(blob.getRootPosition())) {
 						blob.addBlock(blob.getRootPosition(), nearbyBlobs);
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * Cuts an existing atmosphere graph when a newly placed block is airtight.
+	 * The sealing decision is supplied by {@link SealableBlockHandler} so dynamic
+	 * non-full blocks on the explicit allow list (notably Galacticraft air-lock
+	 * seals) behave the same during block updates as they do during a full scan.
+	 */
+	static boolean removeSealedPositionFromBlob(AreaBlob blob,
+			BlockPosition pos, boolean sealed) {
+		if(blob.contains(pos) && sealed) {
+			blob.removeBlock(pos.x, pos.y, pos.z);
+			return true;
+		}
+		return false;
 	}
 
 	/**

@@ -15,7 +15,7 @@ public final class StationAltitudeChangeRate {
 	public static final double MINIMUM_MULTIPLIER = 1.0D;
 	public static final double MAXIMUM_MULTIPLIER = 10.0D;
 
-	private static final double MULTIPLIER_PER_STEP = 0.5D;
+	public static final double MULTIPLIER_PER_STEP = 0.5D;
 	private static final double LEGACY_MAXIMUM_STEP = 0.1D;
 
 	private StationAltitudeChangeRate() {
@@ -29,6 +29,11 @@ public final class StationAltitudeChangeRate {
 		return MINIMUM_MULTIPLIER
 				+ MULTIPLIER_PER_STEP
 				*clampSliderProgress(sliderProgress);
+	}
+
+	public static int getSliderProgress(double multiplier) {
+		return clampSliderProgress((int)Math.round(
+				(multiplier-MINIMUM_MULTIPLIER)/MULTIPLIER_PER_STEP));
 	}
 
 	/**

@@ -56,6 +56,7 @@ public class AdvancedRocketryBlocks {
 	public static Block blockWarpCore;
 	public static Block blockWarpShipMonitor;
 	public static Block blockOxygenDetection;
+	public static Block blockOxygenDetector;
 	public static Block blockUnlitTorch;
 	public static Block blocksGeode;
 	public static Block blockVitrifiedSand;
@@ -81,6 +82,11 @@ public class AdvancedRocketryBlocks {
 	public static Block blockCircularLight;
 	public static Block blockDockingPort;
 	public static Block blockEnergyPipe;
+	public static Block blockAirtightEnergyInterface;
+	public static Block blockAirtightFluidInterface;
+	public static Block blockAirtightOpenComputersCable;
+	public static Block blockAirtightMESmartInterface;
+	public static Block blockAirtightMEDenseInterface;
 	public static Block blockSolarGenerator;
 	public static Block blockAltitudeController;
 	public static Block blockRailgun;

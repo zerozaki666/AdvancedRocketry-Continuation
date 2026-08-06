@@ -1,12 +1,12 @@
 # AdvancedRocketry Continuation for Minecraft 1.7.10
 
 这是 AdvancedRocketry 1.7.10 的社区延续分支。当前版本为
-`1.4.2-continuation`，需要配套的
+`1.4.3-continuation`，需要配套的
 [`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)
 `0.2.10` 或更高版本。
 
 本版本的完整变更与升级说明见
-[`doc/RELEASE_NOTES_1_4_2.md`](doc/RELEASE_NOTES_1_4_2.md)。
+[`doc/RELEASE_NOTES_1_4_3.md`](doc/RELEASE_NOTES_1_4_3.md)。
 
 本分支选择性移植了
 [`kuzuanpa/AdvancedRocketry-TFRU`](https://github.com/kuzuanpa/AdvancedRocketry-TFRU)
@@ -17,6 +17,18 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 [`TFRU_COMMIT_PORT_AUDIT.md`](TFRU_COMMIT_PORT_AUDIT.md)。
 
 ## 本次延续版新增与修复
+
+- 新增原生 OpenComputers 空间站/火箭自动化组件、七套独立 OpenOS GUI 与
+  `advrocket` 统一主界面。安装 OpenComputers 时可合成原生 AdvRocket 程序软盘，
+  使用 `install AdvRocket` 安装，并通过离线 `update` 从新版 JAR 安全覆盖套件；
+  未安装 OpenComputers 时不注册软盘或配方，AdvancedRocketry 仍可独立启动。
+- 新增无需供电的 Oxygen Detector，用于双门气闸联锁。它会忽略被气密方块遮挡的
+  面，并以“任一暴露面”或“全部暴露面”可呼吸为条件输出红石；安装
+  OpenComputers 时还可读取东南西北上下六面的独立检测结果。
+- 新增零缓存的气密 RF 与流体直通接口；流体接口在最后一个当前来源拆除前只允许
+  单一流体。安装对应模组时还会条件注册六面连通的气密 OpenComputers Cable、
+  8 频道 ME 智能接口及 32 频道 ME 致密智能接口，OC/AE2 未安装时这些联动方块与
+  配方完全不注册。
 
 - FTL Warp Core 通过 OreDictionary 消耗 `gemDilithium` 或
   `crystalDilithium`，并按 `pointsPerDilithium` 配置正确计算燃料点。
@@ -36,8 +48,10 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 - 增加 Java 7 兼容的恒星/行星轨道模拟与远近细节（LoD）星空渲染。
 - 模拟宇宙使用安全的正 Y 原点和天体下限；自由空间火箭在客户端与服务端都会在
   位移前截断到安全高度，避免 Minecraft 1.7.10 的虚空清除逻辑误杀。
-- 由玩家实际驾驶且携带行星识别芯片的火箭可进入自由空间，按玩家视线手动航行
-  并接近目标天体着陆；空座远程发射、卫星、无人火箭和小行星任务流程保持不变。
+- 行星识别芯片默认使用 `DIRECT` 模式直接前往所选维度；将
+  `planetChipTravelMode` 改为 `MANUAL` 后，由玩家实际驾驶的火箭才会进入自由空间，
+  按玩家视线手动航行并接近目标天体着陆。空座远程发射、卫星、无人火箭和小行星
+  任务流程保持不变。
 - 使用显式座位标志修复新建火箭的座位位于结构 `x=-1` 时被误判为无座位的问题；
   `getSeatX()` 对无座位仍返回旧值 `-1`，并正确迁移旧存档的“无座位”标记。
 - 增补中文翻译以及多项启动、网络同步和维度属性兼容性修复。
@@ -46,6 +60,8 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 
 - `spaceStationId`：空间站维度 ID，默认 `-2`。
 - `freeSpaceId`：自由空间维度 ID，默认 `-3`。
+- `planetChipTravelMode`：行星识别芯片旅行模式，默认 `DIRECT`；设为 `MANUAL`
+  才启用自由空间手动飞行。
 - `maxSpaceRocketSpeed`：自由空间中火箭各方向的最大速度。
 - `pointsPerDilithium`：每颗 Dilithium 提供的 FTL 燃料点（对应代码字段
   `fuelPointsPerDilithium`）。

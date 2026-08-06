@@ -3,10 +3,19 @@ package zmaster587.advancedRocketry.tile.station;
 import io.netty.buffer.ByteBuf;
 
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.relauncher.Side;
+import li.cil.oc.api.machine.Arguments;
+import li.cil.oc.api.machine.Callback;
+import li.cil.oc.api.machine.Context;
+import li.cil.oc.api.network.Environment;
+import li.cil.oc.api.network.Message;
+import li.cil.oc.api.network.Node;
 import zmaster587.advancedRocketry.achievements.ARAchivements;
 import zmaster587.advancedRocketry.api.Configuration;
 import zmaster587.advancedRocketry.api.DataStorage.DataType;
@@ -18,11 +27,16 @@ import zmaster587.advancedRocketry.inventory.modules.ModulePanetImage;
 import zmaster587.advancedRocketry.inventory.modules.ModulePlanetSelector;
 import zmaster587.advancedRocketry.inventory.IPlanetDefiner;
 import zmaster587.advancedRocketry.inventory.TextureResources;
+import zmaster587.advancedRocketry.integration.CompatibilityMgr;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersComponentAccess.Result;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersNetworkNodeSupport;
 import zmaster587.advancedRocketry.item.ItemData;
 import zmaster587.advancedRocketry.item.ItemPlanetIdentificationChip;
 import zmaster587.advancedRocketry.network.PacketSpaceStationInfo;
 import zmaster587.advancedRocketry.stations.SpaceObject;
 import zmaster587.advancedRocketry.stations.SpaceObjectManager;
+import zmaster587.advancedRocketry.stations.StationDestinationService;
 import zmaster587.advancedRocketry.stations.StationTarget;
 import zmaster587.advancedRocketry.stations.StationTargetResolver;
 import zmaster587.advancedRocketry.tile.multiblock.TileWarpCore;
@@ -63,7 +77,8 @@ import net.minecraft.util.MathHelper;
 import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.ForgeDirection;
 
-public class TileWarpShipMonitor extends TileEntity implements IModularInventory, ISelectionNotify, INetworkMachine, IButtonInventory, IProgressBar, IDataSync, IGuiCallback, IDataInventory, IPlanetDefiner {
+@Optional.Interface(iface = "li.cil.oc.api.network.Environment", modid = "OpenComputers")
+public class TileWarpShipMonitor extends TileEntity implements IModularInventory, ISelectionNotify, INetworkMachine, IButtonInventory, IProgressBar, IDataSync, IGuiCallback, IDataInventory, IPlanetDefiner, Environment {
 
 
 	protected ModulePlanetSelector container;
@@ -83,6 +98,10 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 	private static final int DISTANCESLOT = 0, MASSSLOT = 1, COMPOSITION = 2, PLANETSLOT = 3, MAX_PROGRESS = 1000;
 	private ModuleProgress programmingProgress;
 	private int progress;
+	private Object openComputersNode;
+	private NBTTagCompound pendingOpenComputersNodeData;
+	private boolean openComputersSignalBaseline;
+	private int openComputersLastOrbit;
 
 	public TileWarpShipMonitor() {
 		tabModule = new ModuleTab(4,0,0,this, 3, new String[]{LibVulpes.proxy.getLocalizedString("msg.warpmon.tab.warp"), LibVulpes.proxy.getLocalizedString("msg.warpmon.tab.data"), LibVulpes.proxy.getLocalizedString("msg.warpmon.tab.tracking")}, new ResourceLocation[][] { TextureResources.tabWarp, TextureResources.tabData, TextureResources.tabPlanetTracking} );
@@ -91,6 +110,18 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		inv = new EmbeddedInventory(9);
 		programmingProgress = new ModuleProgress(35, 80, 3, TextureResources.terraformProgressBar, this);
 		progress = -1;
+	}
+
+	@Override
+	public void invalidate() {
+		detachOpenComputersNode();
+		super.invalidate();
+	}
+
+	@Override
+	public void onChunkUnload() {
+		detachOpenComputersNode();
+		super.onChunkUnload();
 	}
 
 
@@ -105,76 +136,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 
 	protected int getTravelCost() {
-		SpaceObject object = getSpaceObject();
-		if(object == null)
-			return Integer.MAX_VALUE;
-
-		StationTarget source = StationTargetResolver.getInstance()
-				.resolve(object.getOrbitingPlanetId());
-		StationTarget destination = StationTargetResolver.getInstance()
-				.resolve(object.getDestOrbitingBody());
-		if(!source.isDestination() || !destination.isDestination()
-				|| source.getRawId() == destination.getRawId())
-			return Integer.MAX_VALUE;
-
-		DimensionProperties properties = source.getDimensionProperties();
-		DimensionProperties destProperties =
-				destination.getDimensionProperties();
-		if(properties == null || destProperties == null
-				|| source.getStellarBody() == null
-				|| destination.getStellarBody() == null)
-			return Integer.MAX_VALUE;
-
-		if(source.getStellarBody().getId()
-				!= destination.getStellarBody().getId())
-			return 500;
-
-		if(source.getKind() == StationTarget.Kind.BLACK_HOLE_STAR
-				|| destination.getKind()
-						== StationTarget.Kind.BLACK_HOLE_STAR) {
-			DimensionProperties planet = source.getKind()
-					== StationTarget.Kind.BLACK_HOLE_STAR
-					? destProperties : properties;
-			while(planet.isMoon()) {
-				DimensionProperties parent = planet.getParentProperties();
-				if(parent == null)
-					return Integer.MAX_VALUE;
-				planet = parent;
-			}
-			return Math.max(planet.orbitalDist, 1);
-		}
-
-		while(destProperties.getParentProperties() != null
-				&& destProperties.isMoon())
-			destProperties = destProperties.getParentProperties();
-
-		if((destProperties.isMoon()
-				&& destProperties.getParentPlanet() == properties.getId())
-				|| (properties.isMoon()
-						&& properties.getParentPlanet()
-								== destProperties.getId()))
-			return 1;
-
-		while(properties.isMoon()) {
-			DimensionProperties parent = properties.getParentProperties();
-			if(parent == null)
-				return Integer.MAX_VALUE;
-			properties = parent;
-		}
-
-		double x1 = properties.orbitalDist
-				* MathHelper.cos((float)properties.orbitTheta);
-		double y1 = properties.orbitalDist
-				* MathHelper.sin((float)properties.orbitTheta);
-		double x2 = destProperties.orbitalDist
-				* MathHelper.cos((float)destProperties.orbitTheta);
-		double y2 = destProperties.orbitalDist
-				* MathHelper.sin((float)destProperties.orbitTheta);
-		double cost = Math.sqrt(Math.pow(x1 - x2, 2)
-				+ Math.pow(y1 - y2, 2));
-		if(Double.isNaN(cost) || Double.isInfinite(cost))
-			return Integer.MAX_VALUE;
-		return Math.max((int)Math.min(Integer.MAX_VALUE, cost), 1);
+		return StationWarpService.calculateTravelCost(getSpaceObject());
 	}
 
 	@Override
@@ -254,7 +216,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 						&& getSpaceObject().getFuelAmount() >= travelCost
 						&& getSpaceObject().hasUsableWarpCore();
 				flag = flag && !(isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody()));
-				boolean artifactFlag = (dimCache != null && meetsArtifactReq(dimCache));
+				boolean artifactFlag = (dimCache != null && meetsArtifactRequirements(dimCache));
 				canWarp = new ModuleText(baseX, baseY + sizeY + 30, (isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody())) ? LibVulpes.proxy.getLocalizedString("msg.warpmon.nowhere") : 
 					(!artifactFlag ? LibVulpes.proxy.getLocalizedString("msg.warpmon.missingart") : (flag ? LibVulpes.proxy.getLocalizedString("msg.warpmon.ready") : LibVulpes.proxy.getLocalizedString("msg.warpmon.notready"))), flag && artifactFlag ? 0x1baa1b : 0xFF1b1b);
 				modules.add(canWarp);
@@ -379,7 +341,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 		if(canWarp != null) {
 			flag = flag && !(isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody()));
-			boolean artifactFlag = (dimCache != null && meetsArtifactReq(dimCache));
+			boolean artifactFlag = (dimCache != null && meetsArtifactRequirements(dimCache));
 			canWarp.setText(isOnStation && (getSpaceObject().getDestOrbitingBody() == -1 || getSpaceObject().getOrbitingPlanetId() == getSpaceObject().getDestOrbitingBody()) ? LibVulpes.proxy.getLocalizedString("msg.warpmon.nowhere") : 
 				(!artifactFlag ? LibVulpes.proxy.getLocalizedString("msg.warpmon.missingart") : (flag ? LibVulpes.proxy.getLocalizedString("msg.warpmon.ready") : LibVulpes.proxy.getLocalizedString("msg.warpmon.notready"))));
 			canWarp.setColor(flag && artifactFlag ? 0x1baa1b : 0xFF1b1b);
@@ -540,48 +502,11 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 				return;
 
 			int destinationId = station.getDestOrbitingBody();
-			StationTarget destination = StationTargetResolver.getInstance()
-					.resolve(destinationId);
-			int travelCost = getTravelCost();
 			if(!StationTargetResolver.getInstance().isAllowedDestination(
-						destinationId, (EntityPlayerMP)player)
-					|| !isTargetKnown(destination)
-					|| !station.hasUsableWarpCore()
-					|| travelCost <= 0
-					|| travelCost == Integer.MAX_VALUE
-					|| station.getFuelAmount() < travelCost
-					|| destination.getDimensionProperties() == null
-					|| !meetsArtifactReq(
-							destination.getDimensionProperties()))
+						destinationId, (EntityPlayerMP)player))
 				return;
-
-			// All validation precedes the single authoritative fuel mutation.
-			if(station.useFuel(travelCost) == travelCost) {
-				int transitionDuration = (int)Math.min(5000L,
-						(long)travelCost * 5L);
-				SpaceObjectManager.getSpaceManager().moveStationToBody(
-						station, destinationId, transitionDuration);
-
-
-				for (Object plr : worldObj.playerEntities) {
-
-					EntityPlayer player2 = (EntityPlayer)plr;
-					if(SpaceObjectManager.getSpaceManager().getSpaceStationFromBlockCoords((int)player2.posX, (int)player2.posZ) == station) {
-						player2.triggerAchievement(ARAchivements.givingItAllShesGot);
-						if(!DimensionManager.hasReachedWarp)
-							player2.triggerAchievement(ARAchivements.flightOfThePhoenix);
-					}
-				}
-
-				DimensionManager.hasReachedWarp = true;
-
-				for(BlockPosition vec : station.getWarpCoreLocations()) {
-					TileEntity tile = worldObj.getTileEntity(vec.x, vec.y, vec.z);
-					if(tile != null && tile instanceof TileWarpCore) {
-						((TileWarpCore)tile).onInventoryUpdated();
-					}
-				}
-			}
+			StationWarpService.tryWarp(this, station,
+					Integer.valueOf(destinationId));
 		}
 		else if(id == TAB_SWITCH && !worldObj.isRemote) {
 			tabModule.setTab(nbt.getShort("tab"));
@@ -616,6 +541,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		inv.writeToNBT(compound);
 		data.writeToNBT(compound);
 		compound.setInteger("progress", progress);
+		writeOpenComputersNode(compound);
 		super.writeToNBT(compound);
 	}
 
@@ -625,6 +551,9 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		inv.readFromNBT(compound);
 		data.readFromNBT(compound);
 		progress = compound.getInteger("progress");
+		pendingOpenComputersNodeData = compound.hasKey("openComputersNode")
+				? compound.getCompoundTag("openComputersNode") : null;
+		openComputersSignalBaseline = false;
 	}
 
 	@Override
@@ -641,9 +570,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	private void selectSystem(int id) {
 		SpaceObject object = getSpaceObject();
-		if(object == null
-				|| object.getOrbitingPlanetId()
-						== SpaceObjectManager.WARPDIMID)
+		if(object == null)
 			return;
 		StationTarget target = StationTargetResolver.getInstance()
 				.resolve(id);
@@ -651,8 +578,10 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 			dimCache = null;
 			return;
 		}
-		dimCache = target.getDimensionProperties();
-		object.setDestOrbitingBody(id);
+		StationDestinationService.Result result =
+				StationDestinationService.setDestination(object, id);
+		if(result.isSuccess())
+			dimCache = target.getDimensionProperties();
 	}
 
 	private boolean isAuthorizedActor(EntityPlayer player) {
@@ -671,16 +600,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 
 	private boolean isTargetKnown(StationTarget target) {
 		SpaceObject object = getSpaceObject();
-		if(object == null || target == null)
-			return false;
-		if(target.getKind() == StationTarget.Kind.BLACK_HOLE_STAR)
-			return target.getStellarBody() != null
-					&& object.isStarKnown(target.getStellarBody());
-		if(target.getKind() == StationTarget.Kind.DIMENSION)
-			return target.getDimensionProperties() != null
-					&& object.isPlanetKnown(
-							target.getDimensionProperties());
-		return false;
+		return StationDestinationService.isKnown(object, target);
 	}
 
 	@Override
@@ -945,7 +865,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 		}
 	}
 
-	private boolean meetsArtifactReq(DimensionProperties properties) {
+	boolean meetsArtifactRequirements(DimensionProperties properties) {
 		//Make sure we have all the artifacts
 		if(properties == null)
 			return false;
@@ -971,6 +891,10 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 	
 	@Override
 	public void updateEntity() {
+		if(!worldObj.isRemote && CompatibilityMgr.openComputersLoaded) {
+			ensureOpenComputersNode();
+			updateOpenComputersWarpSignals();
+		}
 		if(!worldObj.isRemote && progress != -1) {
 			progress++;
 			if(progress >= MAX_PROGRESS) {
@@ -987,7 +911,7 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 							DimensionProperties props = DimensionManager.getInstance().getDimensionProperties(id);
 							if(!isPlanetKnown(props) && !props.getRequiredArtifacts().isEmpty()) {
 								//If all artifacts are met, then add
-								if(meetsArtifactReq(props))
+								if(meetsArtifactRequirements(props))
 									unknownPlanets.add(id);
 							}
 						}
@@ -1018,6 +942,319 @@ public class TileWarpShipMonitor extends TileEntity implements IModularInventory
 			}
 		}
 
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void ensureOpenComputersNode() {
+		if(openComputersNode == null) {
+			openComputersNode = OpenComputersNetworkNodeSupport.create(this,
+					"warp_controller", pendingOpenComputersNodeData);
+			pendingOpenComputersNodeData = null;
+		}
+		OpenComputersNetworkNodeSupport.join(this, openComputersNode);
+	}
+
+	private void detachOpenComputersNode() {
+		if(CompatibilityMgr.openComputersLoaded && openComputersNode != null)
+			detachLoadedOpenComputersNode();
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void detachLoadedOpenComputersNode() {
+		pendingOpenComputersNodeData =
+				OpenComputersNetworkNodeSupport.save(openComputersNode);
+		OpenComputersNetworkNodeSupport.remove(openComputersNode);
+		openComputersNode = null;
+	}
+
+	private void writeOpenComputersNode(NBTTagCompound compound) {
+		if(pendingOpenComputersNodeData != null)
+			compound.setTag("openComputersNode",
+					pendingOpenComputersNodeData);
+		if(CompatibilityMgr.openComputersLoaded && openComputersNode != null)
+			writeLoadedOpenComputersNode(compound);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void writeLoadedOpenComputersNode(NBTTagCompound compound) {
+		compound.setTag("openComputersNode",
+				OpenComputersNetworkNodeSupport.save(openComputersNode));
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void updateOpenComputersWarpSignals() {
+		SpaceObject object = getSpaceObject();
+		if(object == null) {
+			openComputersSignalBaseline = false;
+			return;
+		}
+		int orbit = object.getOrbitingPlanetId();
+		if(!openComputersSignalBaseline) {
+			openComputersLastOrbit = orbit;
+			openComputersSignalBaseline = true;
+			return;
+		}
+		if(orbit == openComputersLastOrbit)
+			return;
+
+		if(openComputersLastOrbit != SpaceObjectManager.WARPDIMID
+				&& orbit == SpaceObjectManager.WARPDIMID) {
+			long remaining = Math.max(0L, object.getTransitionTime()
+					- worldObj.getTotalWorldTime());
+			OpenComputersNetworkNodeSupport.sendSignal(openComputersNode,
+					"warp_started", object.getId(),
+					object.getDestOrbitingBody(), remaining);
+		}
+		else if(openComputersLastOrbit == SpaceObjectManager.WARPDIMID
+				&& orbit != SpaceObjectManager.WARPDIMID)
+			OpenComputersNetworkNodeSupport.sendSignal(openComputersNode,
+					"warp_finished", object.getId(), orbit);
+		openComputersLastOrbit = orbit;
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public Node node() {
+		return openComputersNode instanceof Node
+				? (Node)openComputersNode : null;
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onConnect(Node node) {
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onDisconnect(Node node) {
+	}
+
+	@Override
+	@Optional.Method(modid = "OpenComputers")
+	public void onMessage(Message message) {
+	}
+
+	private SpaceObject getAutomationStation(Result access) {
+		return access.getSpaceObject() instanceof SpaceObject
+				? (SpaceObject)access.getSpaceObject() : null;
+	}
+
+	@Callback(doc = "function():number -- Returns the current orbit target; unavailable during warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCurrentPlanet(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		if(access.getSpaceObject().getOrbitingPlanetId()
+				== SpaceObjectManager.WARPDIMID)
+			return OpenComputersComponentAccess.getterError("in_warp",
+					"Station is currently in warp.");
+		return new Object[] { access.getSpaceObject().getOrbitingPlanetId() };
+	}
+
+	@Callback(doc = "function():table -- Returns the current orbit target id, kind and display name; unavailable during warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getCurrentTargetInfo(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		return describeCurrentTarget(station);
+	}
+
+	@Callback(doc = "function(id?:number):table -- Describes a station target; defaults to the committed destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getTargetInfo(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		int id = args.count() == 0 ? station.getDestOrbitingBody()
+				: args.checkInteger(0);
+		return describeTarget(station, id);
+	}
+
+	static Object[] describeCurrentTarget(SpaceObject station) {
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station",
+					"Component is not on a valid space station.");
+		int currentTargetId = station.getOrbitingPlanetId();
+		if(currentTargetId == SpaceObjectManager.WARPDIMID)
+			return OpenComputersComponentAccess.getterError("in_warp",
+					"Station is currently in warp.");
+		Object[] result = describeTarget(station, currentTargetId);
+		if(result.length == 0 || !(result[0] instanceof Map))
+			return result;
+		Map<?, ?> info = (Map<?, ?>)result[0];
+		Object name = info.get("name");
+		if(!(name instanceof String) || ((String)name).trim().isEmpty())
+			return OpenComputersComponentAccess.getterError(
+					"invalid_target",
+					"Current orbit target has no display name.");
+		return result;
+	}
+
+	static Object[] describeTarget(SpaceObject station, int targetId) {
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station",
+					"Component is not on a valid space station.");
+		StationTarget target = StationTargetResolver.getInstance()
+				.resolve(targetId);
+		if(!target.isDestination())
+			return OpenComputersComponentAccess.getterError(
+					"invalid_target",
+					"Requested id is not a valid station target.");
+		return new Object[] { StationDestinationService.describe(station,
+				target) };
+	}
+
+	@Callback(doc = "function():number -- Returns the committed station destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getDestination(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { access.getSpaceObject().getDestOrbitingBody() };
+	}
+
+	@Callback(doc = "function(id:number):boolean, number|string -- Sets a known valid station destination.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] setDestination(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.mutatorError(
+					"not_on_station", "Unsupported station implementation.");
+		int id = args.checkInteger(0);
+		StationDestinationService.Result result =
+				StationDestinationService.setDestination(station, id);
+		if(!result.isSuccess())
+			return OpenComputersComponentAccess.mutatorError(
+					result.getErrorCode(), result.getErrorMessage());
+		dimCache = result.getTarget().getDimensionProperties();
+		markDirty();
+		worldObj.markBlockForUpdate(xCoord, yCoord, zCoord);
+		return new Object[] { true, id };
+	}
+
+	@Callback(doc = "function():number -- Returns the current station warp-fuel travel cost.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getTravelCost(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		int cost = StationWarpService.calculateTravelCost(station);
+		if(cost <= 0 || cost == Integer.MAX_VALUE)
+			return OpenComputersComponentAccess.getterError(
+					"invalid_travel_cost",
+					"No finite positive travel cost is available.");
+		return new Object[] { cost };
+	}
+
+	@Callback(doc = "function():number -- Returns current station warp fuel.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getFuelAmount(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		return new Object[] { station.getFuelAmount() };
+	}
+
+	@Callback(doc = "function():boolean -- Returns whether the station is in warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] isInWarp(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		return new Object[] { access.getSpaceObject().getOrbitingPlanetId()
+				== SpaceObjectManager.WARPDIMID };
+	}
+
+	@Callback(doc = "function():boolean, string -- Returns warp readiness and a stable reason code.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] canWarp(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return new Object[] { false, access.getErrorCode() };
+		StationWarpService.Status status = StationWarpService.evaluate(this,
+				getAutomationStation(access), null);
+		return new Object[] { status.canWarp(), status.getReason() };
+	}
+
+	@Callback(doc = "function(expectedDestinationId?:number):boolean, number|string, number|string -- Starts one validated atomic station warp.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] warp(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asMutatorError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.mutatorError(
+					"not_on_station", "Unsupported station implementation.");
+		Integer expected = args.count() == 0 ? null
+				: Integer.valueOf(args.checkInteger(0));
+		StationWarpService.Result result = StationWarpService.tryWarp(this,
+				station, expected);
+		if(!result.isSuccess())
+			return OpenComputersComponentAccess.mutatorError(
+					result.getErrorCode(), result.getErrorMessage());
+		return new Object[] { true, result.getDestinationId(),
+				result.getRemainingTicks() };
+	}
+
+	@Callback(doc = "function():table -- Returns a complete station warp-state snapshot.")
+	@Optional.Method(modid = "OpenComputers")
+	public Object[] getStatus(Context context, Arguments args) {
+		Result access = OpenComputersComponentAccess.resolveStation(this);
+		if(!access.isValid())
+			return access.asGetterError();
+		SpaceObject station = getAutomationStation(access);
+		if(station == null)
+			return OpenComputersComponentAccess.getterError(
+					"not_on_station", "Unsupported station implementation.");
+		StationWarpService.Status readiness = StationWarpService.evaluate(
+				this, station, null);
+		StationTarget destination = StationTargetResolver.getInstance()
+				.resolve(station.getDestOrbitingBody());
+		int cost = StationWarpService.calculateTravelCost(station);
+		boolean inWarp = station.getOrbitingPlanetId()
+				== SpaceObjectManager.WARPDIMID;
+		long remaining = inWarp ? Math.max(0L,
+				station.getTransitionTime()-worldObj.getTotalWorldTime()) : 0L;
+		boolean artifacts = destination.getDimensionProperties() != null
+				&& meetsArtifactRequirements(
+						destination.getDimensionProperties());
+
+		Map<String, Object> status = new LinkedHashMap<String, Object>();
+		status.put("stationId", station.getId());
+		status.put("currentTargetId", station.getOrbitingPlanetId());
+		status.put("destinationTargetId",
+				station.getDestOrbitingBody());
+		status.put("inWarp", inWarp);
+		status.put("travelCost", cost == Integer.MAX_VALUE ? -1 : cost);
+		status.put("fuelAmount", station.getFuelAmount());
+		status.put("fuelCapacity", station.getMaxFuelAmount());
+		status.put("hasUsableWarpCore", station.hasUsableWarpCore());
+		status.put("hasRequiredArtifacts", artifacts);
+		status.put("canWarp", readiness.canWarp());
+		status.put("reason", readiness.getReason());
+		status.put("remainingTicks", remaining);
+		return new Object[] { status };
 	}
 
 

@@ -90,14 +90,16 @@ public class TileGuidanceComputer extends TileInventoryHatch implements IModular
 	}
 
 	/**
-	 * Planet chips opt into continuous free-space flight. Station, asteroid,
-	 * and satellite chips retain their established task behavior.
+	 * Planet chips opt into continuous free-space flight only when the server
+	 * explicitly enables MANUAL travel. Station, asteroid, and satellite chips
+	 * retain their established task behavior.
 	 */
 	public boolean isManualSpaceFlightTask() {
 		ItemStack stack = getStackInSlot(0);
 		if(stack == null)
 			return false;
-		return stack.getItem() instanceof ItemPlanetIdentificationChip;
+		return Configuration.planetChipTravelMode.usesFreeSpace()
+				&& stack.getItem() instanceof ItemPlanetIdentificationChip;
 	}
 	
 	/**

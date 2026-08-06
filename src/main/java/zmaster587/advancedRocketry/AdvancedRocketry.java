@@ -4,6 +4,7 @@ package zmaster587.advancedRocketry;
 import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Loader;
 import cpw.mods.fml.common.Mod;
+import cpw.mods.fml.common.Optional;
 import cpw.mods.fml.common.Mod.EventHandler;
 import cpw.mods.fml.common.Mod.Instance;
 import cpw.mods.fml.common.SidedProxy;
@@ -54,6 +55,7 @@ import zmaster587.advancedRocketry.armor.ItemSpaceChest;
 import zmaster587.advancedRocketry.atmosphere.AtmosphereVacuum;
 import zmaster587.advancedRocketry.backwardCompat.VersionCompat;
 import zmaster587.advancedRocketry.block.BlockAdvRocketMotor;
+import zmaster587.advancedRocketry.block.BlockAirtightInterface;
 import zmaster587.advancedRocketry.block.BlockAstroBed;
 import zmaster587.advancedRocketry.block.BlockBeacon;
 import zmaster587.advancedRocketry.block.BlockCharcoalLog;
@@ -70,6 +72,7 @@ import zmaster587.advancedRocketry.block.BlockLaser;
 import zmaster587.advancedRocketry.block.BlockLightSource;
 import zmaster587.advancedRocketry.block.BlockLinkedHorizontalTexture;
 import zmaster587.advancedRocketry.block.BlockMiningDrill;
+import zmaster587.advancedRocketry.block.BlockOxygenDetector;
 import zmaster587.advancedRocketry.block.BlockPlanetSoil;
 import zmaster587.advancedRocketry.block.BlockPress;
 import zmaster587.advancedRocketry.block.BlockPressurizedFluidTank;
@@ -122,6 +125,9 @@ import zmaster587.advancedRocketry.event.PlanetEventHandler;
 import zmaster587.advancedRocketry.event.WorldEvents;
 import zmaster587.advancedRocketry.integration.CompatibilityMgr;
 import zmaster587.advancedRocketry.integration.GalacticCraftHandler;
+import zmaster587.advancedRocketry.integration.appliedenergistics.AppliedEnergisticsAirtightInterfaceRegistration;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersAirtightCableRegistration;
+import zmaster587.advancedRocketry.integration.opencomputers.OpenComputersProgramDiskRegistration;
 import zmaster587.libVulpes.inventory.GuiHandler;
 import zmaster587.libVulpes.items.ItemBlockMeta;
 import zmaster587.libVulpes.items.ItemIngredient;
@@ -164,6 +170,8 @@ import zmaster587.advancedRocketry.tile.cables.TileDataPipe;
 import zmaster587.advancedRocketry.tile.cables.TileEnergyPipe;
 import zmaster587.advancedRocketry.tile.cables.TileLiquidPipe;
 import zmaster587.advancedRocketry.tile.cables.TileWirelessTransciever;
+import zmaster587.advancedRocketry.tile.airtight.TileAirtightEnergyInterface;
+import zmaster587.advancedRocketry.tile.airtight.TileAirtightFluidInterface;
 import zmaster587.advancedRocketry.tile.hatch.TileDataBus;
 import zmaster587.advancedRocketry.tile.hatch.TileSatelliteHatch;
 import zmaster587.advancedRocketry.tile.infrastructure.TileEntityFuelingStation;
@@ -257,7 +265,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 
-@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,)")
+@Mod(modid="advancedRocketry", name="Advanced Rocketry Continuation", version="@MAJOR@.@MINOR@.@REVIS@@QUALIFIER@@BUILD@", dependencies="required-after:libVulpes@[%LIBVULPESVERSION%,);after:OpenComputers;after:appliedenergistics2")
 public class AdvancedRocketry {
 
 
@@ -326,6 +334,11 @@ public class AdvancedRocketry {
 		zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId = config.get(Configuration.CATEGORY_GENERAL, "freeSpaceId", legacyFreeSpaceId, "Dimension ID to use for controlled interplanetary flight").getInt();
 		if(zmaster587.advancedRocketry.api.Configuration.spaceDimId == zmaster587.advancedRocketry.api.Configuration.freeSpaceDimId)
 			throw new IllegalArgumentException("Advanced Rocketry's spaceStationId and freeSpaceId must be different");
+		zmaster587.advancedRocketry.api.Configuration.planetChipTravelMode =
+				zmaster587.advancedRocketry.api.PlanetChipTravelMode.parse(
+						config.get(ROCKET, "planetChipTravelMode", "DIRECT",
+								"DIRECT travels straight to the selected dimension; MANUAL enables piloted free-space flight for Planet Identification Chips")
+								.getString());
 		zmaster587.advancedRocketry.api.Configuration.enableNausea = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericNausea", true, "If true, allows players to experience nausea with low oxygen").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.enableOxygen = config.get(Configuration.CATEGORY_GENERAL, "EnableAtmosphericEffects", true, "If true, allows players being hurt due to lack of oxygen and allows effects from non-standard atmosphere types").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.allowMakingItemsForOtherMods = config.get(Configuration.CATEGORY_GENERAL, "makeMaterialsForOtherMods", true, "If true the machines from AdvancedRocketry will produce things like plates/rods for other mods even if Advanced Rocketry itself does not use the material (This can increase load time)").getBoolean();
@@ -608,6 +621,7 @@ public class AdvancedRocketry {
 		AdvancedRocketryBlocks.blockAirLock = new BlockDoor2(Material.rock).setBlockName("smallAirlockDoor").setBlockTextureName("advancedRocketry:smallAirlockDoor").setHardness(3f).setResistance(8f);
 		AdvancedRocketryBlocks.blockLandingPad = new BlockLandingPad(Material.rock).setBlockName("dockingPad").setBlockTextureName("advancedRocketry:rocketPad_").setHardness(3f).setCreativeTab(tabAdvRocketry);
 		AdvancedRocketryBlocks.blockOxygenDetection = new BlockRedstoneEmitter(Material.rock,"advancedrocketry:atmosphereDetector_active").setBlockName("atmosphereDetector").setBlockTextureName("advancedRocketry:atmosphereDetector").setHardness(3f).setCreativeTab(tabAdvRocketry);
+		AdvancedRocketryBlocks.blockOxygenDetector = new BlockOxygenDetector(Material.rock,"advancedrocketry:atmosphereDetector_active").setBlockName("oxygenDetector").setBlockTextureName("advancedRocketry:atmosphereDetector").setHardness(3f).setCreativeTab(tabAdvRocketry);
 		AdvancedRocketryBlocks.blockOxygenScrubber = new BlockTile(TileCO2Scrubber.class, GuiHandler.guiId.MODULAR.ordinal()).setBlockTextureName("advancedrocketry:machineScrubber","advancedrocketry:machineScrubberActive").setCreativeTab(tabAdvRocketry).setBlockName("scrubber").setHardness(3f);
 		AdvancedRocketryBlocks.blockUnlitTorch = new BlockTorchUnlit().setHardness(0.0F).setBlockName("unlittorch").setBlockTextureName("minecraft:torch_on");
 		AdvancedRocketryBlocks.blockVitrifiedSand = new BlockGeneric(Material.sand).setBlockName("vitrifiedSand").setCreativeTab(CreativeTabs.tabBlock).setBlockTextureName("advancedrocketry:vitrifiedSand").setHardness(0.5F).setStepSound(Block.soundTypeSand);
@@ -903,11 +917,17 @@ public class AdvancedRocketry {
 		AdvancedRocketryBlocks.blockDataPipe = new BlockDataCable(Material.iron).setBlockName("dataPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeData");
 		AdvancedRocketryBlocks.blockFluidPipe = new BlockLiquidPipe(Material.iron).setBlockName("liquidPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeLiquid");
 		AdvancedRocketryBlocks.blockEnergyPipe = new BlockEnergyPipe(Material.iron).setBlockName("energyPipe").setCreativeTab(tabAdvRocketry).setBlockTextureName("AdvancedRocketry:pipeEnergy");
+		AdvancedRocketryBlocks.blockAirtightEnergyInterface = new BlockAirtightInterface(Material.iron, TileAirtightEnergyInterface.class).setBlockName("airtightEnergyInterface").setCreativeTab(tabAdvRocketry).setBlockTextureName("libvulpes:batteryRF").setHardness(3f).setResistance(12f);
+		AdvancedRocketryBlocks.blockAirtightFluidInterface = new BlockAirtightInterface(Material.iron, TileAirtightFluidInterface.class).setBlockName("airtightFluidInterface").setCreativeTab(tabAdvRocketry).setBlockTextureName("libvulpes:fluidInput").setHardness(3f).setResistance(12f);
 
 
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockDataPipe , AdvancedRocketryBlocks.blockDataPipe .getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockFluidPipe , AdvancedRocketryBlocks.blockFluidPipe .getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockEnergyPipe , AdvancedRocketryBlocks.blockEnergyPipe.getUnlocalizedName());
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockAirtightEnergyInterface, "airtightEnergyInterface");
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockAirtightFluidInterface, "airtightFluidInterface");
+		SealableBlockHandler.INSTANCE.addSealableBlock(AdvancedRocketryBlocks.blockAirtightEnergyInterface);
+		SealableBlockHandler.INSTANCE.addSealableBlock(AdvancedRocketryBlocks.blockAirtightFluidInterface);
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockLaunchpad, "launchpad");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockRocketBuilder, "rocketBuilder");
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockStructureTower, "structureTower");
@@ -953,6 +973,7 @@ public class AdvancedRocketry {
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockWarpCore, AdvancedRocketryBlocks.blockWarpCore.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockWarpShipMonitor, AdvancedRocketryBlocks.blockWarpShipMonitor.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenDetection, AdvancedRocketryBlocks.blockOxygenDetection.getUnlocalizedName());
+		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenDetector, AdvancedRocketryBlocks.blockOxygenDetector.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockUnlitTorch, AdvancedRocketryBlocks.blockUnlitTorch.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blocksGeode,AdvancedRocketryBlocks.blocksGeode.getUnlocalizedName());
 		GameRegistry.registerBlock(AdvancedRocketryBlocks.blockOxygenFluid,ItemFluid.class, AdvancedRocketryBlocks.blockOxygenFluid.getUnlocalizedName());
@@ -1146,6 +1167,8 @@ public class AdvancedRocketry {
 		GameRegistry.registerTileEntity(TileDataBus.class, "ARdataBus");
 		GameRegistry.registerTileEntity(TileEnergyPipe.class, "AREnergyPipe");
 		GameRegistry.registerTileEntity(TileLiquidPipe.class, "ARLiquidPipe");
+		GameRegistry.registerTileEntity(TileAirtightEnergyInterface.class, "ARAirtightEnergyInterface");
+		GameRegistry.registerTileEntity(TileAirtightFluidInterface.class, "ARAirtightFluidInterface");
 		GameRegistry.registerTileEntity(TileSatelliteHatch.class, "ARsatelliteHatch");
 		GameRegistry.registerTileEntity(TileGuidanceComputerHatch.class, "ARguidanceComputerHatch");
 		GameRegistry.registerTileEntity(TileSatelliteBuilder.class, "ARsatelliteBuilder");
@@ -1166,6 +1189,7 @@ public class AdvancedRocketry {
 		GameRegistry.registerTileEntity(TileCO2Scrubber.class, "ARCO2Scrubber");
 		GameRegistry.registerTileEntity(TileWarpShipMonitor.class, "ARStationMonitor");
 		GameRegistry.registerTileEntity(TileAtmosphereDetector.class, "AROxygenDetector");
+		GameRegistry.registerTileEntity(TileOxygenDetector.class, "ARBreathableOxygenDetector");
 		GameRegistry.registerTileEntity(TileStationOrientationControl.class, "AROrientationControl");
 		GameRegistry.registerTileEntity(TileStationGravityController.class, "ARGravityControl");
 		GameRegistry.registerTileEntity(TileDataPipe.class, "ARDataPipe");
@@ -1234,6 +1258,11 @@ public class AdvancedRocketry {
 		OreDictionary.registerOre("turfMoon", new ItemStack(AdvancedRocketryBlocks.blockMoonTurf));
 		OreDictionary.registerOre("turfMoon", new ItemStack(AdvancedRocketryBlocks.blockMoonTurfDark));
 
+		if(Loader.isModLoaded("OpenComputers"))
+			registerOpenComputersAirtightCableBlock();
+		if(Loader.isModLoaded("appliedenergistics2"))
+			registerAppliedEnergisticsAirtightInterfaceBlocks();
+
 		CompatibilityMgr.getLoadedMods();
 
 	}
@@ -1241,6 +1270,13 @@ public class AdvancedRocketry {
 	@EventHandler
 	public void load(FMLInitializationEvent event)
 	{
+		if(CompatibilityMgr.openComputersLoaded)
+			registerOpenComputersProgramDisk();
+		if(CompatibilityMgr.openComputersLoaded)
+			registerOpenComputersAirtightCableRecipe();
+		if(Loader.isModLoaded("appliedenergistics2"))
+			registerAppliedEnergisticsAirtightInterfaceRecipes();
+
 		zmaster587.advancedRocketry.cable.NetworkRegistry.registerFluidNetwork();
 		ItemStack userInterface = new ItemStack(AdvancedRocketryItems.itemMisc, 1,0);
 		ItemStack basicCircuit = new ItemStack(AdvancedRocketryItems.itemIC, 1,0);
@@ -1328,6 +1364,8 @@ public class AdvancedRocketry {
 
 		//Plugs
 		GameRegistry.addShapedRecipe(new ItemStack(LibVulpesBlocks.blockRFBattery), " x ", "xmx"," x ", 'x', LibVulpesItems.itemBattery, 'm', LibVulpesBlocks.blockStructureBlock);
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockAirtightEnergyInterface), "psp", "srs", "psp", 'p', "plateSteel", 's', AdvancedRocketryBlocks.blockPipeSealer, 'r', LibVulpesBlocks.blockRFBattery));
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockAirtightFluidInterface), "psp", "shs", "psp", 'p', "plateSteel", 's', AdvancedRocketryBlocks.blockPipeSealer, 'h', new ItemStack(LibVulpesBlocks.blockHatch, 1, 2)));
 
 		//O2 Support
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenVent), "bfb", "bmb", "btb", 'b', Blocks.iron_bars, 'f', "fanSteel", 'm', LibVulpesBlocks.blockMotor, 't', AdvancedRocketryBlocks.blockFuelTank));
@@ -1361,6 +1399,7 @@ public class AdvancedRocketry {
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockChemicalReactor), "pip", "abd", "rcr", 'a', itemIOBoard, 'd', controlCircuitBoard, 'r', basicCircuit, 'p', "plateGold", 'i', userInterface, 'c', liquidIOBoard, 'b', LibVulpesBlocks.blockStructureBlock, 'g', "plateGold"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockWarpCore), "gcg", "pbp", "gcg", 'p', "plateSteel", 'c', advancedCircuit, 'b', "coilCopper", 'g', "plateTitanium"));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenDetection), "pip", "gbf", "pcp", 'p', "plateSteel",'f', "fanSteel", 'i', userInterface, 'c', basicCircuit, 'b', LibVulpesBlocks.blockStructureBlock, 'g', Blocks.iron_bars));
+		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockOxygenDetector), "gig", "rbr", "pcp", 'g', Blocks.iron_bars, 'i', userInterface, 'r', Items.repeater, 'b', LibVulpesBlocks.blockStructureBlock, 'p', "plateSteel", 'c', basicCircuit));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockWarpShipMonitor), "pip", "obo", "pcp", 'o', controlCircuitBoard, 'p', "plateSteel", 'i', userInterface, 'c', advancedCircuit, 'b', LibVulpesBlocks.blockStructureBlock));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockBiomeScanner), "plp", "bsb","ppp", 'p', "plateTin", 'l', biomeChanger, 'b', smallBattery, 's', LibVulpesBlocks.blockStructureBlock));
 		GameRegistry.addRecipe(new ShapedOreRecipe(new ItemStack(AdvancedRocketryBlocks.blockDeployableRocketBuilder), "gdg", "dad", "rdr", 'g', "gearTitaniumAluminide", 'd', "dustDilithium", 'r', "stickTitaniumAluminide", 'a', AdvancedRocketryBlocks.blockRocketBuilder));
@@ -1536,6 +1575,31 @@ public class AdvancedRocketry {
 		TileMultiBlock.addMapping('D', list);
 		
 		machineRecipes.createAutoGennedRecipes(modProducts);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersProgramDisk() {
+		OpenComputersProgramDiskRegistration.register();
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersAirtightCableBlock() {
+		OpenComputersAirtightCableRegistration.registerBlock(tabAdvRocketry);
+	}
+
+	@Optional.Method(modid = "OpenComputers")
+	private void registerOpenComputersAirtightCableRecipe() {
+		OpenComputersAirtightCableRegistration.registerRecipe();
+	}
+
+	@Optional.Method(modid = "appliedenergistics2")
+	private void registerAppliedEnergisticsAirtightInterfaceBlocks() {
+		AppliedEnergisticsAirtightInterfaceRegistration.registerBlocks(tabAdvRocketry);
+	}
+
+	@Optional.Method(modid = "appliedenergistics2")
+	private void registerAppliedEnergisticsAirtightInterfaceRecipes() {
+		AppliedEnergisticsAirtightInterfaceRegistration.registerRecipes();
 	}
 
 

@@ -3,7 +3,7 @@
 这是 AdvancedRocketry 1.7.10 的社区延续分支。当前版本为
 `1.4.3-continuation`，需要配套的
 [`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)
-`0.2.10` 或更高版本。
+`0.2.11` 或更高版本。
 
 本版本的完整变更与升级说明见
 [`doc/RELEASE_NOTES_1_4_3.md`](doc/RELEASE_NOTES_1_4_3.md)。

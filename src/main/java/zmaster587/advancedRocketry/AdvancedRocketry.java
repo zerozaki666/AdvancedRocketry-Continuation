@@ -428,7 +428,7 @@ public class AdvancedRocketry {
 								"UPSTREAM_COMPAT or ACCRETION_RATE")
 								.getString());
 		zmaster587.advancedRocketry.api.Configuration.planetSkyOverride = config.get(CLIENT, "PlanetSkyOverride", true, "If true, AR will use a custom skybox on planets").getBoolean();
-		zmaster587.advancedRocketry.api.Configuration.skyOverride = config.get(CLIENT, "overworldSkyOverride", true).getBoolean();
+		zmaster587.advancedRocketry.api.Configuration.skyOverride = config.get(CLIENT, "overworldSkyOverride", false).getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.advancedVFX = config.get(PERFORMANCE, "advancedVFX", true, "Advanced visual effects").getBoolean();
 		zmaster587.advancedRocketry.api.Configuration.blackHoleRenderMode =
 				zmaster587.advancedRocketry.api.BlackHoleRenderMode.parse(

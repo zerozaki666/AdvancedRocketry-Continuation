@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - agent/opencomputers-integration-spec
+      - agent/**
 
 permissions:
   contents: read

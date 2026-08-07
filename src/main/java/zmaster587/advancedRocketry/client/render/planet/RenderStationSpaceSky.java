@@ -219,7 +219,8 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 		long worldTime = mc.theWorld == null ? 0L
 				: mc.theWorld.getTotalWorldTime();
 		float partialTicks = framePartialTicks;
-		double surfaceRotation = getRotationDegrees(worldTime, partialTicks,
+		double surfaceRotation = StationPlanetRotationMath.getRotationDegrees(
+				worldTime, partialTicks,
 				SURFACE_ROTATION_PERIOD_TICKS, rotationSpeed);
 		ResourceLocation surfaceTexture = context.getSurfaceTexture();
 		if(surfaceTexture == null)
@@ -266,7 +267,9 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 						DimensionProperties.getAtmosphereLEOResource(),
 						(float)AtmosphereShellGeometry.cloudOuterRadius(
 								radius, targetProperties.isGasGiant()),
-						centerY, getRotationDegrees(worldTime, partialTicks,
+						centerY,
+						StationPlanetRotationMath.getRotationDegrees(
+								worldTime, partialTicks,
 								ATMOSPHERE_ROTATION_PERIOD_TICKS,
 								rotationSpeed),
 						stationPlanetAtmosphereSphereGlList);
@@ -347,17 +350,6 @@ public class RenderStationSpaceSky extends RenderPlanetarySky {
 		GL11.glScalef(radius, radius, radius);
 		GL11.glCallList(sphereGlList);
 		GL11.glPopMatrix();
-	}
-
-	private static double getRotationDegrees(long worldTime,
-			float partialTicks, double periodTicks, double speedMultiplier) {
-		if(speedMultiplier == 0D || Double.isNaN(speedMultiplier)
-				|| Double.isInfinite(speedMultiplier))
-			return 0D;
-
-		double cycles = (worldTime+Math.max(0F, Math.min(1F, partialTicks)))
-				*speedMultiplier/periodTicks;
-		return (cycles - Math.floor(cycles))*360D;
 	}
 
 	private void enableSurfaceLighting(PlanetRenderContext context) {

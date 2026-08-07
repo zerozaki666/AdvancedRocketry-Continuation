@@ -5,8 +5,9 @@ Minecraft 1.7.10. The current release is `1.4.3-continuation` and requires
 [`libVulpes-Continuation`](https://github.com/zerozaki666/libVulpes-Continuation)
 `0.2.11` or later.
 
-For the complete changes and upgrade notes for versions 1.4.2 and 1.4.3, see
-[`RELEASE_NOTES_1_4_2_AND_1_4_3_EN.md`](RELEASE_NOTES_1_4_2_AND_1_4_3_EN.md).
+For the complete changes and upgrade notes, see
+[`doc/RELEASE_NOTES_1_4_2.md`](doc/RELEASE_NOTES_1_4_2.md) and
+[`doc/RELEASE_NOTES_1_4_3.md`](doc/RELEASE_NOTES_1_4_3.md).
 
 This branch selectively ports 56 commits by which
 [`kuzuanpa/AdvancedRocketry-TFRU`](https://github.com/kuzuanpa/AdvancedRocketry-TFRU)
@@ -36,6 +37,41 @@ commit-by-commit audit of the decisions and adaptations is available in
   six-sided airtight OpenComputers cable, an 8-channel ME smart interface, and a
   32-channel ME dense smart interface. These integration blocks and recipes are
   not registered when OC or AE2 is absent.
+- Backported Kerr-style black-hole stars and the Black Hole Generator from the
+  1.12.2 code line. Black holes persist through XML/NBT/network synchronization,
+  appear correctly in the star map, holographic selector, planetary sky,
+  space-station sky, and free space, and can be selected as synthetic
+  space-station targets without being registered as Forge dimensions.
+- Added a server-authoritative Black Hole Generator multiblock. A completed
+  station directly orbiting a top-level black hole can consume configurable
+  matter fuels and produce a base 500 RF/t, multiplied by
+  `blackHoleGeneratorMultiplier`, while revalidating structure, orbit, fuel,
+  output capacity, chunk reloads, and warp transitions.
+- Added `AUTO`, `FAST`, `HIGH`, and `LEGACY` black-hole render modes with
+  Kerr-style apparent shadows, photon-ring approximation, animated accretion
+  disks, gravitational-lensing images, Doppler asymmetry, and a fixed-function
+  fallback that does not require an external shader pack. Optional free-space
+  interaction modes range from the safe default `VISUAL_ONLY` through warnings
+  and gravity to opt-in destructive `CAPTURE`.
+- Replaced the old layered atmosphere shells with a real-time spherical
+  scattering approximation using Rayleigh/Mie scattering, optical-depth LUTs,
+  altitude-dependent haze, terminators, twilight, and safe legacy/off fallbacks.
+  Existing planet XML remains compatible and may optionally override the visual
+  atmosphere profile.
+- Reworked the space-station planet from a flat LEO plane into a rotating,
+  subdivided sphere with a matching atmosphere shell, high-resolution Earth and
+  Moon textures, and configurable scale, rotation speed, and texture tiling.
+  The Altitude Controller now also provides a persisted 1x-10x maximum altitude
+  change-rate slider.
+- Fixed unmanaged third-party dimensions inheriting an oxygenless AdvancedRocketry
+  atmosphere, so unmapped RFTools, Compact Machines, and similar dimensions
+  default to breathable air while explicit dimension mappings keep their
+  configured atmospheres.
+- Fixed dynamic oxygen-blob isolation for airtight non-full blocks such as
+  whitelisted Galacticraft airlock seals, and fixed Oxygen Detector redstone
+  updates through an adjacent powered solid block.
+- Restored the Crystallizer in the Holographic Projector and fixed the placed
+  Quartz Crucible's identity, localization, and multiblock recognition.
 
 - The FTL Warp Core now consumes `gemDilithium` or `crystalDilithium` through the
   Ore Dictionary and correctly calculates fuel points using the
@@ -89,6 +125,18 @@ Related configuration options:
   space.
 - `pointsPerDilithium`: FTL fuel points supplied by each piece of Dilithium. The
   corresponding code field is `fuelPointsPerDilithium`.
+- `blackHoleRenderMode`: black-hole visual quality/fallback mode; default
+  `AUTO`.
+- `blackHoleFreeSpaceInteraction`: free-space black-hole gameplay behavior;
+  default `VISUAL_ONLY`.
+- `blackHoleGeneratorMultiplier`: multiplier applied to the generator's
+  500 RF/t base output; default `1.0`.
+- `atmosphereRenderMode`: atmosphere visual quality/fallback mode; default
+  `AUTO`.
+- `stationPlanetSphereScaleMultiplier`: apparent size of the planet below a
+  space station; default `1.5`.
+- `overworldSkyOverride`: whether AdvancedRocketry replaces the Overworld sky
+  renderer; default `false` for new configurations.
 
 ## Explicitly Not Ported
 
@@ -162,6 +210,7 @@ and its original copyright notices continue to apply to the corresponding code.
 `0.2.11` 或更高版本。
 
 本版本的完整变更与升级说明见
+[`doc/RELEASE_NOTES_1_4_2.md`](doc/RELEASE_NOTES_1_4_2.md) 与
 [`doc/RELEASE_NOTES_1_4_3.md`](doc/RELEASE_NOTES_1_4_3.md)。
 
 本分支选择性移植了
@@ -185,6 +234,32 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
   单一流体。安装对应模组时还会条件注册六面连通的气密 OpenComputers Cable、
   8 频道 ME 智能接口及 32 频道 ME 致密智能接口，OC/AE2 未安装时这些联动方块与
   配方完全不注册。
+- 从 1.12.2 代码线 backport Kerr 风格黑洞恒星与 Black Hole Generator。黑洞数据
+  可通过 XML、NBT 与网络同步持久保存，并会在星图、全息星球选择器、行星天空、
+  空间站天空及自由空间中正确显示；空间站可选择合成黑洞目标，但不会把黑洞注册成
+  Forge 维度或普通火箭着陆目标。
+- 新增服务端权威校验的 Black Hole Generator 多方块。完成组装且正直接环绕顶级
+  黑洞主星的空间站可消耗可配置的物质燃料，并以
+  `500 RF/t × blackHoleGeneratorMultiplier` 为基础输出；结构、轨道、燃料、
+  输出容量、区块重载及空间站跃迁都会触发资格重检。
+- 黑洞渲染新增 `AUTO`、`FAST`、`HIGH` 与 `LEGACY` 模式，包含 Kerr 风格
+  apparent shadow、近似光子环、动态吸积盘、引力透镜像与 Doppler 明暗不对称；
+  固定管线降级无需外部 shader pack。自由空间交互可从默认安全的
+  `VISUAL_ONLY` 切换到警告、引力或需主动启用的破坏性 `CAPTURE`。
+- 以实时球形散射近似取代旧版分层大气壳，加入 Rayleigh/Mie 散射、光学深度 LUT、
+  随高度变化的薄雾、明暗交界与晨昏效果，并提供安全的 legacy/off 降级。现有
+  planet XML 保持兼容，也可通过可选字段覆盖大气视觉参数。
+- 将空间站下方的 LEO 平面改为带匹配大气壳的旋转细分球体，升级 Earth/Moon
+  高清贴图，并提供视觉倍率、自转速度及贴图 tiling 配置。Altitude Controller
+  新增会保存并同步的最大高度变化速率 slider，可在旧速度的 1 倍至 10 倍间调整。
+- 修复未受 AR 管理的第三方维度错误继承无氧大气的问题；未映射的 RFTools、
+  Compact Machines 等维度默认使用可呼吸空气，显式 dimension mapping 仍按配置
+  工作。
+- 修复气密白名单中的非完整方块（例如 Galacticraft airlock seal）动态闭合时未能
+  及时切断氧气 Blob 的问题，并修复 Oxygen Detector 隔着相邻实体方块时的红石
+  更新传播。
+- 恢复全息投影器中的结晶器结构，并修复石英坩埚放置后的方块身份、本地化及
+  多方块识别。
 
 - FTL Warp Core 通过 OreDictionary 消耗 `gemDilithium` 或
   `crystalDilithium`，并按 `pointsPerDilithium` 配置正确计算燃料点。
@@ -221,6 +296,16 @@ bugfix 与新功能，剥离专为 TFRU 模组包、TerraFirmaCraft、GT6/GregAP
 - `maxSpaceRocketSpeed`：自由空间中火箭各方向的最大速度。
 - `pointsPerDilithium`：每颗 Dilithium 提供的 FTL 燃料点（对应代码字段
   `fuelPointsPerDilithium`）。
+- `blackHoleRenderMode`：黑洞视觉质量与降级模式，默认 `AUTO`。
+- `blackHoleFreeSpaceInteraction`：自由空间黑洞玩法行为，默认
+  `VISUAL_ONLY`。
+- `blackHoleGeneratorMultiplier`：Black Hole Generator 的 500 RF/t 基础输出
+  倍率，默认 `1.0`。
+- `atmosphereRenderMode`：大气视觉质量与降级模式，默认 `AUTO`。
+- `stationPlanetSphereScaleMultiplier`：空间站下方星球的视觉大小倍率，默认
+  `1.5`。
+- `overworldSkyOverride`：是否由 AdvancedRocketry 接管主世界天空；新生成配置
+  的默认值为 `false`。
 
 ## 明确未移植
 
